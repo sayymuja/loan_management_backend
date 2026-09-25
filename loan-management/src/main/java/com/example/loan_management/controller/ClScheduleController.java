@@ -48,4 +48,10 @@ public class ClScheduleController {
 
         return clScheduleService.generateSchedule(loanId);
     }
+    @GetMapping("/loan/{loanId}")
+    public List<ClScheduleDto> getByLoanId(
+            @PathVariable Long loanId) {
+
+        return clScheduleService.getByLoanId(loanId);
+    }
 }

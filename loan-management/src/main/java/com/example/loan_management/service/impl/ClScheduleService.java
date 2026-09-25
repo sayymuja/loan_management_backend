@@ -17,4 +17,6 @@ public interface ClScheduleService {
     List<ClScheduleDto> generateSchedule(Long loanId);
 
     void delete(Long id);
+
+    List<ClScheduleDto> getByLoanId(Long loanId);
 }

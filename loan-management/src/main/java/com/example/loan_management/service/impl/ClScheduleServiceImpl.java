@@ -199,4 +199,19 @@ public class ClScheduleServiceImpl implements ClScheduleService {
 
         return result;
     }
+    @Override
+    public List<ClScheduleDto> getByLoanId(Long loanId) {
+
+        return clScheduleRepository.findByLoanId(loanId)
+                .stream()
+                .map(schedule -> {
+                    ClScheduleDto dto =
+                            modelMapper.map(schedule, ClScheduleDto.class);
+
+                    dto.setLoanId(schedule.getLoan().getId());
+
+                    return dto;
+                })
+                .toList();
+    }
 }
