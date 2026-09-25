@@ -30,6 +30,12 @@ public class VoAlfFundController {
         return voAlfFundService.getById(id);
     }
 
+    // NEW
+    @GetMapping("/vo-alf/{voAlfId}")
+    public VoAlfFundDto getByVoAlfId(@PathVariable Long voAlfId) {
+        return voAlfFundService.getByVoAlfId(voAlfId);
+    }
+
     @PutMapping("/{id}")
     public VoAlfFundDto update(
             @PathVariable Long id,

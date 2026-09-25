@@ -12,6 +12,9 @@ public interface VoAlfFundService {
 
     VoAlfFundDto getById(Long id);
 
+    // NEW
+    VoAlfFundDto getByVoAlfId(Long voAlfId);
+
     VoAlfFundDto update(Long id, VoAlfFundDto dto);
 
     void delete(Long id);

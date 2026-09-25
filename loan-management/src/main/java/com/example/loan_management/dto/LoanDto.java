@@ -27,4 +27,8 @@ public class LoanDto {
 
     private Integer serialNo;
 
+    private String interestType;
+
+    private Double monthlyEmi;
+
 }

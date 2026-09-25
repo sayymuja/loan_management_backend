@@ -48,4 +48,8 @@ public class RepaymentController {
     public RepaymentSummaryDto getSummary(@PathVariable Long loanId) {
         return repaymentService.getSummary(loanId);
     }
+    @GetMapping("/loan/{loanId}")
+    public List<RepaymentDto> getByLoanId(@PathVariable Long loanId) {
+        return repaymentService.getByLoanId(loanId);
+    }
 }

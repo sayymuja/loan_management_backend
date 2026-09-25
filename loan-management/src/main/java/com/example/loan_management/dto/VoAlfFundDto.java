@@ -19,6 +19,8 @@ public class VoAlfFundDto {
     private Double repaymentGroupAmount;
     private Double repaymentWomenAmount;
 
+    private String loanFinancialYear;
+
     private Integer loanGroupCount;
     private Integer loanWomenCount;
     private Double loanGroupAmount;

@@ -11,7 +11,7 @@ public class RepaymentDto {
 
     private Long loanId;
 
-    private LocalDate paymentDate;
+    private LocalDate repaymentDate;
 
     private Double principalAmount;
 
@@ -19,9 +19,11 @@ public class RepaymentDto {
 
     private Double totalAmount;
 
-    private Boolean regularRepayment;
+    private String regularRepayment;
 
     private Double penaltyAmount;
 
     private String remark;
+
+    private Double paidAmount;
 }

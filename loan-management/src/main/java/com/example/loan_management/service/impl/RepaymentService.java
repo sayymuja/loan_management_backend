@@ -17,4 +17,5 @@ public interface RepaymentService {
 
     RepaymentSummaryDto getSummary(Long loanId);
     void delete(Long id);
+    List<RepaymentDto> getByLoanId(Long loanId);
 }

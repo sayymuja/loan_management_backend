@@ -15,4 +15,6 @@ public interface LoanService {
     LoanDto update(Long id, LoanDto loanDto);
 
     void delete(Long id);
+
+    List<LoanDto> getByVoAlfId(Long voAlfId);
 }

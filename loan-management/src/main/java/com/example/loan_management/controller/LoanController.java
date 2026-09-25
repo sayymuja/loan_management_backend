@@ -43,4 +43,8 @@ public class LoanController {
         loanService.delete(id);
         return "Loan deleted successfully";
     }
+    @GetMapping("/vo-alf/{voAlfId}")
+    public List<LoanDto> getByVoAlfId(@PathVariable Long voAlfId) {
+        return loanService.getByVoAlfId(voAlfId);
+    }
 }

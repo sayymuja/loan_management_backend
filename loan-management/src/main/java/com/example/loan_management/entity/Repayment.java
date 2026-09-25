@@ -18,8 +18,8 @@ public class Repayment {
     @JoinColumn(name = "loan_id", nullable = false)
     private Loan loan;
 
-    @Column(name = "payment_date")
-    private LocalDate paymentDate;
+    @Column(name = "repayment_date")
+    private LocalDate repaymentDate;
 
     @Column(name = "principal_amount")
     private Double principalAmount;
@@ -31,10 +31,13 @@ public class Repayment {
     private Double totalAmount;
 
     @Column(name = "regular_repayment")
-    private Boolean regularRepayment;
+    private String regularRepayment;
 
     @Column(name = "penalty_amount")
     private Double penaltyAmount;
 
     private String remark;
+
+    @Column(name = "paid_amount")
+    private Double paidAmount;
 }

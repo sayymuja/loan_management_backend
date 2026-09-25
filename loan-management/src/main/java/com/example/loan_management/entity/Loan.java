@@ -39,6 +39,12 @@ public class Loan {
     @Column(name = "interest_rate")
     private Double interestRate;
 
+    @Column(name = "interest_type")
+    private String interestType;
+
+    @Column(name = "monthly_emi")
+    private Double monthlyEmi;
+
     @Column(name = "serial_no")
     private Integer serialNo;
 }

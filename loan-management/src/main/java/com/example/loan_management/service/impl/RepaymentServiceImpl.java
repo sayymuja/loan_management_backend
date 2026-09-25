@@ -30,6 +30,7 @@ public class RepaymentServiceImpl implements RepaymentService {
         Repayment repayment = modelMapper.map(repaymentDto, Repayment.class);
 
         repayment.setLoan(loan);
+        calculateRepayment(repayment, loan);
 
         Repayment savedRepayment = repaymentRepository.save(repayment);
 
@@ -82,10 +83,10 @@ public class RepaymentServiceImpl implements RepaymentService {
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
 
         repayment.setLoan(loan);
-        repayment.setPaymentDate(repaymentDto.getPaymentDate());
-        repayment.setPrincipalAmount(repaymentDto.getPrincipalAmount());
-        repayment.setInterestAmount(repaymentDto.getInterestAmount());
-        repayment.setTotalAmount(repaymentDto.getTotalAmount());
+        repayment.setRepaymentDate(repaymentDto.getRepaymentDate());
+        repayment.setPaidAmount(repaymentDto.getPaidAmount());
+
+        calculateRepayment(repayment, loan);
         repayment.setRegularRepayment(repaymentDto.getRegularRepayment());
         repayment.setPenaltyAmount(repaymentDto.getPenaltyAmount());
         repayment.setRemark(repaymentDto.getRemark());
@@ -152,5 +153,49 @@ public class RepaymentServiceImpl implements RepaymentService {
         summary.setTotalPenalty(totalPenalty);
 
         return summary;
+    }
+    @Override
+    public List<RepaymentDto> getByLoanId(Long loanId) {
+        return repaymentRepository.findByLoanId(loanId)
+                .stream()
+                .map(repayment -> modelMapper.map(repayment, RepaymentDto.class))
+                .toList();
+    }
+    private void calculateRepayment(Repayment repayment, Loan loan) {
+
+        double paidAmount = repayment.getPaidAmount() != null
+                ? repayment.getPaidAmount() : 0;
+
+        double principal = loan.getLoanAmount() != null
+                ? loan.getLoanAmount() : 0;
+
+        double annualRate = loan.getInterestRate() != null
+                ? loan.getInterestRate() : 0;
+
+        // Current outstanding principal
+        List<Repayment> previousRepayments =
+                repaymentRepository.findByLoanId(loan.getId());
+
+        double paidPrincipal = previousRepayments.stream()
+                .filter(r -> r.getId() == null ||
+                        !r.getId().equals(repayment.getId()))
+                .mapToDouble(r -> r.getPrincipalAmount() != null
+                        ? r.getPrincipalAmount() : 0)
+                .sum();
+
+        double outstandingPrincipal = principal - paidPrincipal;
+
+        // Monthly interest
+        double monthlyInterest =
+                outstandingPrincipal * annualRate / 12 / 100;
+
+        // Interest cannot exceed paid amount
+        double interest = Math.min(paidAmount, monthlyInterest);
+
+        double principalPaid = paidAmount - interest;
+
+        repayment.setInterestAmount(interest);
+        repayment.setPrincipalAmount(principalPaid);
+        repayment.setTotalAmount(paidAmount);
     }
 }

@@ -29,6 +29,9 @@ public class VoAlfFund {
     private Double repaymentWomenAmount;
 
     // VO मधून कर्ज दिलेली माहिती 2025-26
+    @Column(name = "loan_financial_year")
+    private String loanFinancialYear;
+
     private Integer loanGroupCount;
     private Integer loanWomenCount;
     private Double loanGroupAmount;

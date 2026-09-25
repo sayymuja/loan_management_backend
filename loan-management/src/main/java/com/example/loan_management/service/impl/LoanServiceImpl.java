@@ -78,6 +78,14 @@ public class LoanServiceImpl implements LoanService {
                 .orElseThrow(() -> new RuntimeException("VO/ALF not found"));
 
         loan.setVoAlf(voAlf);
+        loan.setMonthlyEmi(
+                calculateEmi(
+                        loan.getLoanAmount(),
+                        loan.getInterestRate(),
+                        loan.getRepaymentPeriodMonths(),
+                        loan.getInterestType()
+                )
+        );
         loan.setGroupName(loanDto.getGroupName());
         loan.setWomanName(loanDto.getWomanName());
         loan.setLoanAmount(loanDto.getLoanAmount());
@@ -85,6 +93,16 @@ public class LoanServiceImpl implements LoanService {
         loan.setLoanGivenDate(loanDto.getLoanGivenDate());
         loan.setRepaymentPeriodMonths(loanDto.getRepaymentPeriodMonths());
         loan.setInterestRate(loanDto.getInterestRate());
+        loan.setInterestType(loanDto.getInterestType());
+
+        loan.setMonthlyEmi(
+                calculateEmi(
+                        loan.getLoanAmount(),
+                        loan.getInterestRate(),
+                        loan.getRepaymentPeriodMonths(),
+                        loan.getInterestType()
+                )
+        );
 
         Loan updatedLoan = loanRepository.save(loan);
 
@@ -102,5 +120,42 @@ public class LoanServiceImpl implements LoanService {
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
 
         loanRepository.delete(loan);
+    }
+    @Override
+    public List<LoanDto> getByVoAlfId(Long voAlfId) {
+        return loanRepository.findByVoAlfId(voAlfId)
+                .stream()
+                .map(loan -> {
+                    LoanDto dto = modelMapper.map(loan, LoanDto.class);
+                    dto.setVoAlfId(loan.getVoAlf().getId());
+                    return dto;
+                })
+                .toList();
+    }
+    private Double calculateEmi(Double principal, Double annualRate,
+                                Integer months, String interestType) {
+
+        if (principal == null || annualRate == null || months == null
+                || months <= 0) {
+            return 0.0;
+        }
+
+        if ("FLAT".equalsIgnoreCase(interestType)) {
+            double totalInterest =
+                    principal * annualRate / 100 * months / 12;
+
+            return (principal + totalInterest) / months;
+        }
+
+        // REDUCING BALANCE
+        double monthlyRate = annualRate / 12 / 100;
+
+        if (monthlyRate == 0) {
+            return principal / months;
+        }
+
+        return principal * monthlyRate *
+                Math.pow(1 + monthlyRate, months) /
+                (Math.pow(1 + monthlyRate, months) - 1);
     }
 }

@@ -69,6 +69,20 @@ public class VoAlfFundServiceImpl implements VoAlfFundService {
 
         return dto;
     }
+    @Override
+    public VoAlfFundDto getByVoAlfId(Long voAlfId) {
+
+        VoAlfFund fund = voAlfFundRepository.findByVoAlfId(voAlfId)
+                .orElseThrow(() ->
+                        new RuntimeException("VO/ALF Fund not found"));
+
+        VoAlfFundDto dto =
+                modelMapper.map(fund, VoAlfFundDto.class);
+
+        dto.setVoAlfId(fund.getVoAlf().getId());
+
+        return dto;
+    }
 
     @Override
     public VoAlfFundDto update(Long id, VoAlfFundDto dto) {
@@ -117,4 +131,5 @@ public class VoAlfFundServiceImpl implements VoAlfFundService {
 
         voAlfFundRepository.delete(fund);
     }
+
 }
