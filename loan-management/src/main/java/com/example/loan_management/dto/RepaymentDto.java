@@ -26,4 +26,13 @@ public class RepaymentDto {
     private String remark;
 
     private Double paidAmount;
+
+    private Integer installmentNo;
+
+    private LocalDate installmentDate;
+
+    private Double scheduledAmount;
+
+    private String paymentStatus;
+
 }

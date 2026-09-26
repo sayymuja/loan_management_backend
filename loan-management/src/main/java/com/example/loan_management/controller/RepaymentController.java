@@ -52,4 +52,34 @@ public class RepaymentController {
     public List<RepaymentDto> getByLoanId(@PathVariable Long loanId) {
         return repaymentService.getByLoanId(loanId);
     }
+    @PostMapping("/generate/{loanId}")
+    public List<RepaymentDto> generateSchedule(
+            @PathVariable Long loanId) {
+        return repaymentService.generateSchedule(loanId);
+    }
+
+    @PutMapping("/pay/{repaymentId}")
+    public RepaymentDto payEmi(
+            @PathVariable Long repaymentId,
+            @RequestParam Double paidAmount,
+            @RequestParam Double penaltyAmount) {
+
+        return repaymentService.payEmi(
+                repaymentId,
+                paidAmount,
+                penaltyAmount
+        );
+    }
+    @PutMapping("/edit-paid/{repaymentId}")
+    public RepaymentDto editPaidEmi(
+            @PathVariable Long repaymentId,
+            @RequestParam Double paidAmount,
+            @RequestParam Double penaltyAmount) {
+
+        return repaymentService.editPaidEmi(
+                repaymentId,
+                paidAmount,
+                penaltyAmount
+        );
+    }
 }

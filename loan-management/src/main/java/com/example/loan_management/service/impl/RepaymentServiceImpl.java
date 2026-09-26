@@ -1,5 +1,5 @@
 package com.example.loan_management.service.impl;
-
+import java.time.LocalDate;
 import com.example.loan_management.dto.RepaymentDto;
 import com.example.loan_management.dto.RepaymentSummaryDto;
 import com.example.loan_management.entity.Loan;
@@ -161,41 +161,269 @@ public class RepaymentServiceImpl implements RepaymentService {
                 .map(repayment -> modelMapper.map(repayment, RepaymentDto.class))
                 .toList();
     }
-    private void calculateRepayment(Repayment repayment, Loan loan) {
+    @Override
+    public List<RepaymentDto> generateSchedule(Long loanId) {
+
+        Loan loan = loanRepository.findById(loanId)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+
+        // Check existing schedule
+        List<Repayment> existing =
+                repaymentRepository.findByLoanId(loanId);
+
+        if (!existing.isEmpty()) {
+            return existing.stream()
+                    .map(repayment -> {
+                        RepaymentDto dto =
+                                modelMapper.map(repayment, RepaymentDto.class);
+                        dto.setLoanId(repayment.getLoan().getId());
+                        return dto;
+                    })
+                    .toList();
+        }
+
+        Integer months = loan.getRepaymentPeriodMonths();
+
+        if (months == null || months <= 0) {
+            throw new RuntimeException("Invalid repayment period");
+        }
+
+        Double emi = loan.getMonthlyEmi();
+
+        if (emi == null || emi <= 0) {
+            throw new RuntimeException("Monthly EMI not available");
+        }
+
+        LocalDate startDate = loan.getLoanGivenDate();
+
+        if (startDate == null) {
+            throw new RuntimeException("Loan given date not available");
+        }
+
+        List<RepaymentDto> result = new java.util.ArrayList<>();
+
+        for (int i = 1; i <= months; i++) {
+
+            Repayment repayment = new Repayment();
+
+            repayment.setLoan(loan);
+            repayment.setInstallmentNo(i);
+
+            repayment.setInstallmentDate(
+                    startDate.plusMonths(i)
+            );
+
+            repayment.setScheduledAmount(emi);
+
+            repayment.setPaidAmount(0.0);
+            repayment.setPrincipalAmount(0.0);
+            repayment.setInterestAmount(0.0);
+            repayment.setTotalAmount(0.0);
+
+            repayment.setPaymentStatus("PENDING");
+            repayment.setRegularRepayment("No");
+            repayment.setPenaltyAmount(0.0);
+            repayment.setRemark("");
+
+            Repayment saved =
+                    repaymentRepository.save(repayment);
+
+            RepaymentDto dto =
+                    modelMapper.map(saved, RepaymentDto.class);
+
+            dto.setLoanId(loanId);
+
+            result.add(dto);
+        }
+
+        return result;
+    }
+    private void calculateRepayment(
+            Repayment repayment,
+            Loan loan) {
 
         double paidAmount = repayment.getPaidAmount() != null
-                ? repayment.getPaidAmount() : 0;
+                ? repayment.getPaidAmount()
+                : 0.0;
 
-        double principal = loan.getLoanAmount() != null
-                ? loan.getLoanAmount() : 0;
+        double loanAmount = loan.getLoanAmount() != null
+                ? loan.getLoanAmount()
+                : 0.0;
 
         double annualRate = loan.getInterestRate() != null
-                ? loan.getInterestRate() : 0;
+                ? loan.getInterestRate()
+                : 0.0;
 
-        // Current outstanding principal
         List<Repayment> previousRepayments =
                 repaymentRepository.findByLoanId(loan.getId());
 
         double paidPrincipal = previousRepayments.stream()
-                .filter(r -> r.getId() == null ||
-                        !r.getId().equals(repayment.getId()))
+                .filter(r -> r.getId() == null
+                        || !r.getId().equals(repayment.getId()))
                 .mapToDouble(r -> r.getPrincipalAmount() != null
-                        ? r.getPrincipalAmount() : 0)
+                        ? Math.max(r.getPrincipalAmount(), 0.0)
+                        : 0.0)
                 .sum();
 
-        double outstandingPrincipal = principal - paidPrincipal;
+        double outstandingPrincipal =
+                Math.max(loanAmount - paidPrincipal, 0.0);
 
-        // Monthly interest
         double monthlyInterest =
                 outstandingPrincipal * annualRate / 12 / 100;
 
-        // Interest cannot exceed paid amount
-        double interest = Math.min(paidAmount, monthlyInterest);
+        /*
+         * Interest cannot be negative
+         */
+        double interest =
+                Math.max(0.0, Math.min(paidAmount, monthlyInterest));
 
-        double principalPaid = paidAmount - interest;
+        /*
+         * Principal cannot be negative
+         */
+        double principalPaid =
+                Math.max(0.0, paidAmount - interest);
 
         repayment.setInterestAmount(interest);
         repayment.setPrincipalAmount(principalPaid);
-        repayment.setTotalAmount(paidAmount);
     }
+    @Override
+    public RepaymentDto payEmi(
+            Long repaymentId,
+            Double paidAmount,
+            Double penaltyAmount) {
+
+        Repayment repayment = repaymentRepository.findById(repaymentId)
+                .orElseThrow(() -> new RuntimeException("Repayment not found"));
+
+        // Previous paid amount
+        double previousPaidAmount =
+                repayment.getPaidAmount() != null
+                        ? repayment.getPaidAmount()
+                        : 0.0;
+
+        // New payment
+        double newPaidAmount =
+                paidAmount != null
+                        ? paidAmount
+                        : 0.0;
+
+        // Add previous + new payment
+        double totalPaidAmount =
+                previousPaidAmount + newPaidAmount;
+
+        // Scheduled EMI
+        double scheduledAmount =
+                repayment.getScheduledAmount() != null
+                        ? repayment.getScheduledAmount()
+                        : 0.0;
+
+        // Penalty
+        double newPenaltyAmount =
+                penaltyAmount != null
+                        ? penaltyAmount
+                        : 0.0;
+
+        // Update paid amount
+        repayment.setPaidAmount(totalPaidAmount);
+
+        // Update penalty
+        repayment.setPenaltyAmount(newPenaltyAmount);
+
+        // Payment status
+        if (totalPaidAmount >= scheduledAmount) {
+            repayment.setPaymentStatus("PAID");
+        } else if (totalPaidAmount > 0) {
+            repayment.setPaymentStatus("PARTIAL");
+        } else {
+            repayment.setPaymentStatus("PENDING");
+        }
+
+        repayment.setRepaymentDate(LocalDate.now());
+
+        // Calculate principal + interest
+        calculateRepayment(
+                repayment,
+                repayment.getLoan()
+        );
+
+        // Total collection = paid EMI + penalty
+        repayment.setTotalAmount(
+                totalPaidAmount + newPenaltyAmount
+        );
+
+        Repayment saved =
+                repaymentRepository.save(repayment);
+
+        RepaymentDto response =
+                modelMapper.map(saved, RepaymentDto.class);
+
+        response.setLoanId(saved.getLoan().getId());
+
+        return response;
+    }
+    @Override
+    public RepaymentDto editPaidEmi(
+            Long repaymentId,
+            Double paidAmount,
+            Double penaltyAmount) {
+
+        Repayment repayment = repaymentRepository.findById(repaymentId)
+                .orElseThrow(() -> new RuntimeException("Repayment not found"));
+
+        // Edited Paid Amount
+        double updatedPaidAmount =
+                paidAmount != null
+                        ? paidAmount
+                        : 0.0;
+
+        // Edited Penalty Amount
+        double updatedPenaltyAmount =
+                penaltyAmount != null
+                        ? penaltyAmount
+                        : 0.0;
+
+        // Scheduled EMI
+        double scheduledAmount =
+                repayment.getScheduledAmount() != null
+                        ? repayment.getScheduledAmount()
+                        : 0.0;
+
+        // Replace existing values
+        repayment.setPaidAmount(updatedPaidAmount);
+        repayment.setPenaltyAmount(updatedPenaltyAmount);
+
+        // Recalculate payment status
+        if (updatedPaidAmount >= scheduledAmount) {
+            repayment.setPaymentStatus("PAID");
+        } else if (updatedPaidAmount > 0) {
+            repayment.setPaymentStatus("PARTIAL");
+        } else {
+            repayment.setPaymentStatus("PENDING");
+        }
+
+        repayment.setRepaymentDate(LocalDate.now());
+
+        // Recalculate principal + interest
+        calculateRepayment(
+                repayment,
+                repayment.getLoan()
+        );
+
+        // Paid amount + penalty
+        repayment.setTotalAmount(
+                updatedPaidAmount + updatedPenaltyAmount
+        );
+
+        Repayment saved =
+                repaymentRepository.save(repayment);
+
+        RepaymentDto response =
+                modelMapper.map(saved, RepaymentDto.class);
+
+        response.setLoanId(saved.getLoan().getId());
+
+        return response;
+    }
+
+
 }

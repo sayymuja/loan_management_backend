@@ -40,4 +40,18 @@ public class Repayment {
 
     @Column(name = "paid_amount")
     private Double paidAmount;
+
+    @Column(name = "installment_no")
+    private Integer installmentNo;
+
+    @Column(name = "installment_date")
+    private LocalDate installmentDate;
+
+    @Column(name = "scheduled_amount")
+    private Double scheduledAmount;
+
+    @Column(name = "payment_status")
+    private String paymentStatus;
+
+
 }

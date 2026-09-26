@@ -18,4 +18,15 @@ public interface RepaymentService {
     RepaymentSummaryDto getSummary(Long loanId);
     void delete(Long id);
     List<RepaymentDto> getByLoanId(Long loanId);
+    List<RepaymentDto> generateSchedule(Long loanId);
+    RepaymentDto payEmi(
+            Long repaymentId,
+            Double paidAmount,
+            Double penaltyAmount
+    );
+    RepaymentDto editPaidEmi(
+            Long repaymentId,
+            Double paidAmount,
+            Double penaltyAmount
+    );
 }
