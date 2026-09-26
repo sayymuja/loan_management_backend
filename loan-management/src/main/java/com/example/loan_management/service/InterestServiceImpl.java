@@ -1,11 +1,10 @@
-package com.example.loan_management.service.impl;
+package com.example.loan_management.service;
 
 import com.example.loan_management.dto.InterestDto;
 import com.example.loan_management.entity.Cmrc;
 import com.example.loan_management.entity.Interest;
 import com.example.loan_management.repository.CmrcRepository;
 import com.example.loan_management.repository.InterestRepository;
-import com.example.loan_management.service.InterestService;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;

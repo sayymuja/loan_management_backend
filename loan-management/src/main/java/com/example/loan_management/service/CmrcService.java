@@ -1,7 +1,6 @@
-package com.example.loan_management.service.impl;
+package com.example.loan_management.service;
 
 import com.example.loan_management.dto.CmrcDto;
-import com.example.loan_management.entity.Cmrc;
 
 import java.util.List;
 

@@ -2,6 +2,7 @@ package com.example.loan_management.dto;
 
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Data
@@ -30,5 +31,9 @@ public class LoanDto {
     private String interestType;
 
     private Double monthlyEmi;
+
+    private String loanStatus;
+
+    private BigDecimal totalInterestReceived;
 
 }

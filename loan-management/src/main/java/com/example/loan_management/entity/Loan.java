@@ -47,4 +47,7 @@ public class Loan {
 
     @Column(name = "serial_no")
     private Integer serialNo;
+
+    @Column(name = "loan_status")
+    private String loanStatus;
 }

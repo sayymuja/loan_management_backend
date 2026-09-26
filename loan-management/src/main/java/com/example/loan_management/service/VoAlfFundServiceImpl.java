@@ -1,11 +1,10 @@
-package com.example.loan_management.service.impl;
+package com.example.loan_management.service;
 
 import com.example.loan_management.dto.VoAlfFundDto;
 import com.example.loan_management.entity.VoAlf;
 import com.example.loan_management.entity.VoAlfFund;
 import com.example.loan_management.repository.VoAlfFundRepository;
 import com.example.loan_management.repository.VoAlfRepository;
-import com.example.loan_management.service.VoAlfFundService;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;

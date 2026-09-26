@@ -1,11 +1,10 @@
-package com.example.loan_management.service.impl;
+package com.example.loan_management.service;
 
 import com.example.loan_management.dto.ClScheduleDto;
 import com.example.loan_management.entity.ClSchedule;
 import com.example.loan_management.entity.Loan;
 import com.example.loan_management.repository.ClScheduleRepository;
 import com.example.loan_management.repository.LoanRepository;
-import com.example.loan_management.service.ClScheduleService;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;

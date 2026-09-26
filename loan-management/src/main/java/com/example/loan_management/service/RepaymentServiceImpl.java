@@ -1,4 +1,4 @@
-package com.example.loan_management.service.impl;
+package com.example.loan_management.service;
 import java.time.LocalDate;
 import com.example.loan_management.dto.RepaymentDto;
 import com.example.loan_management.dto.RepaymentSummaryDto;
@@ -6,7 +6,6 @@ import com.example.loan_management.entity.Loan;
 import com.example.loan_management.entity.Repayment;
 import com.example.loan_management.repository.LoanRepository;
 import com.example.loan_management.repository.RepaymentRepository;
-import com.example.loan_management.service.RepaymentService;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
@@ -108,7 +107,11 @@ public class RepaymentServiceImpl implements RepaymentService {
         Repayment repayment = repaymentRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Repayment not found"));
 
+        Long loanId = repayment.getLoan().getId();
+
         repaymentRepository.delete(repayment);
+
+        updateLoanStatus(loanId);
     }
     @Override
     public RepaymentSummaryDto getSummary(Long loanId) {
@@ -354,6 +357,8 @@ public class RepaymentServiceImpl implements RepaymentService {
         Repayment saved =
                 repaymentRepository.save(repayment);
 
+        updateLoanStatus(saved.getLoan().getId());
+
         RepaymentDto response =
                 modelMapper.map(saved, RepaymentDto.class);
 
@@ -417,6 +422,8 @@ public class RepaymentServiceImpl implements RepaymentService {
         Repayment saved =
                 repaymentRepository.save(repayment);
 
+        updateLoanStatus(saved.getLoan().getId());
+
         RepaymentDto response =
                 modelMapper.map(saved, RepaymentDto.class);
 
@@ -424,6 +431,34 @@ public class RepaymentServiceImpl implements RepaymentService {
 
         return response;
     }
+    private void updateLoanStatus(Long loanId) {
 
+        Loan loan = loanRepository.findById(loanId)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+
+        List<Repayment> repayments =
+                repaymentRepository.findByLoanId(loanId);
+
+        Integer totalInstallments =
+                loan.getRepaymentPeriodMonths();
+
+        if (totalInstallments == null || totalInstallments <= 0) {
+            loan.setLoanStatus("ACTIVE");
+            loanRepository.save(loan);
+            return;
+        }
+
+        long paidInstallments = repayments.stream()
+                .filter(r -> "PAID".equalsIgnoreCase(r.getPaymentStatus()))
+                .count();
+
+        if (paidInstallments >= totalInstallments) {
+            loan.setLoanStatus("CLOSED");
+        } else {
+            loan.setLoanStatus("ACTIVE");
+        }
+
+        loanRepository.save(loan);
+    }
 
 }

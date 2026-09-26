@@ -1,15 +1,17 @@
-package com.example.loan_management.service.impl;
+package com.example.loan_management.service;
 
 import com.example.loan_management.dto.LoanDto;
 import com.example.loan_management.entity.Loan;
+import com.example.loan_management.entity.Repayment;
 import com.example.loan_management.entity.VoAlf;
 import com.example.loan_management.repository.LoanRepository;
+import com.example.loan_management.repository.RepaymentRepository;
 import com.example.loan_management.repository.VoAlfRepository;
-import com.example.loan_management.service.LoanService;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Service
@@ -18,6 +20,7 @@ public class LoanServiceImpl implements LoanService {
 
     private final LoanRepository loanRepository;
     private final VoAlfRepository voAlfRepository;
+    private final RepaymentRepository repaymentRepository;
     private final ModelMapper modelMapper;
 
     @Override
@@ -30,11 +33,20 @@ public class LoanServiceImpl implements LoanService {
 
         loan.setVoAlf(voAlf);
 
+        // New loan is ACTIVE
+        loan.setLoanStatus("ACTIVE");
+
         Loan savedLoan = loanRepository.save(loan);
 
         LoanDto response = modelMapper.map(savedLoan, LoanDto.class);
 
         response.setVoAlfId(savedLoan.getVoAlf().getId());
+
+        response.setLoanStatus(savedLoan.getLoanStatus());
+
+        response.setTotalInterestReceived(
+                calculateTotalInterestReceived(savedLoan.getId())
+        );
 
         return response;
     }
@@ -44,14 +56,7 @@ public class LoanServiceImpl implements LoanService {
 
         return loanRepository.findAll()
                 .stream()
-                .map(loan -> {
-
-                    LoanDto dto = modelMapper.map(loan, LoanDto.class);
-
-                    dto.setVoAlfId(loan.getVoAlf().getId());
-
-                    return dto;
-                })
+                .map(this::mapLoanToDto)
                 .toList();
     }
 
@@ -61,11 +66,7 @@ public class LoanServiceImpl implements LoanService {
         Loan loan = loanRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
 
-        LoanDto dto = modelMapper.map(loan, LoanDto.class);
-
-        dto.setVoAlfId(loan.getVoAlf().getId());
-
-        return dto;
+        return mapLoanToDto(loan);
     }
 
     @Override
@@ -78,20 +79,15 @@ public class LoanServiceImpl implements LoanService {
                 .orElseThrow(() -> new RuntimeException("VO/ALF not found"));
 
         loan.setVoAlf(voAlf);
-        loan.setMonthlyEmi(
-                calculateEmi(
-                        loan.getLoanAmount(),
-                        loan.getInterestRate(),
-                        loan.getRepaymentPeriodMonths(),
-                        loan.getInterestType()
-                )
-        );
+
         loan.setGroupName(loanDto.getGroupName());
         loan.setWomanName(loanDto.getWomanName());
         loan.setLoanAmount(loanDto.getLoanAmount());
         loan.setLoanPurpose(loanDto.getLoanPurpose());
         loan.setLoanGivenDate(loanDto.getLoanGivenDate());
-        loan.setRepaymentPeriodMonths(loanDto.getRepaymentPeriodMonths());
+        loan.setRepaymentPeriodMonths(
+                loanDto.getRepaymentPeriodMonths()
+        );
         loan.setInterestRate(loanDto.getInterestRate());
         loan.setInterestType(loanDto.getInterestType());
 
@@ -106,11 +102,7 @@ public class LoanServiceImpl implements LoanService {
 
         Loan updatedLoan = loanRepository.save(loan);
 
-        LoanDto response = modelMapper.map(updatedLoan, LoanDto.class);
-
-        response.setVoAlfId(updatedLoan.getVoAlf().getId());
-
-        return response;
+        return mapLoanToDto(updatedLoan);
     }
 
     @Override
@@ -121,26 +113,83 @@ public class LoanServiceImpl implements LoanService {
 
         loanRepository.delete(loan);
     }
+
     @Override
     public List<LoanDto> getByVoAlfId(Long voAlfId) {
+
         return loanRepository.findByVoAlfId(voAlfId)
                 .stream()
-                .map(loan -> {
-                    LoanDto dto = modelMapper.map(loan, LoanDto.class);
-                    dto.setVoAlfId(loan.getVoAlf().getId());
-                    return dto;
-                })
+                .map(this::mapLoanToDto)
                 .toList();
     }
-    private Double calculateEmi(Double principal, Double annualRate,
-                                Integer months, String interestType) {
 
-        if (principal == null || annualRate == null || months == null
+    /**
+     * Convert Loan entity to LoanDto
+     */
+    private LoanDto mapLoanToDto(Loan loan) {
+
+        LoanDto dto = modelMapper.map(loan, LoanDto.class);
+
+        if (loan.getVoAlf() != null) {
+            dto.setVoAlfId(loan.getVoAlf().getId());
+        }
+
+        // Loan status
+        dto.setLoanStatus(
+                loan.getLoanStatus() != null
+                        ? loan.getLoanStatus()
+                        : "ACTIVE"
+        );
+
+        // Total interest received
+        dto.setTotalInterestReceived(
+                calculateTotalInterestReceived(loan.getId())
+        );
+
+        return dto;
+    }
+
+    /**
+     * Calculate total interest received
+     * from all repayments of the loan.
+     */
+    private BigDecimal calculateTotalInterestReceived(Long loanId) {
+
+        if (loanId == null) {
+            return BigDecimal.ZERO;
+        }
+
+        List<Repayment> repayments =
+                repaymentRepository.findByLoanId(loanId);
+
+        return repayments.stream()
+                .map(repayment ->
+                        repayment.getInterestAmount() != null
+                                ? BigDecimal.valueOf(repayment.getInterestAmount())
+                                : BigDecimal.ZERO
+                )
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /**
+     * Calculate EMI
+     */
+    private Double calculateEmi(
+            Double principal,
+            Double annualRate,
+            Integer months,
+            String interestType) {
+
+        if (principal == null
+                || annualRate == null
+                || months == null
                 || months <= 0) {
+
             return 0.0;
         }
 
         if ("FLAT".equalsIgnoreCase(interestType)) {
+
             double totalInterest =
                     principal * annualRate / 100 * months / 12;
 
@@ -148,14 +197,16 @@ public class LoanServiceImpl implements LoanService {
         }
 
         // REDUCING BALANCE
-        double monthlyRate = annualRate / 12 / 100;
+        double monthlyRate =
+                annualRate / 12 / 100;
 
         if (monthlyRate == 0) {
             return principal / months;
         }
 
         return principal * monthlyRate *
-                Math.pow(1 + monthlyRate, months) /
+                Math.pow(1 + monthlyRate, months)
+                /
                 (Math.pow(1 + monthlyRate, months) - 1);
     }
 }

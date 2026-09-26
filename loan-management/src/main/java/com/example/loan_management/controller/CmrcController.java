@@ -1,8 +1,7 @@
 package com.example.loan_management.controller;
 
 import com.example.loan_management.dto.CmrcDto;
-import com.example.loan_management.entity.Cmrc;
-import com.example.loan_management.service.impl.CmrcService;
+import com.example.loan_management.service.CmrcService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
