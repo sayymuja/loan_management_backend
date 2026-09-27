@@ -22,7 +22,8 @@ public interface RepaymentService {
     RepaymentDto payEmi(
             Long repaymentId,
             Double paidAmount,
-            Double penaltyAmount
+            Double penaltyAmount,
+            Boolean regularRepayment
     );
     RepaymentDto editPaidEmi(
             Long repaymentId,

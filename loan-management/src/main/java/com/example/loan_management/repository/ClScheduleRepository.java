@@ -5,7 +5,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 
-public interface ClScheduleRepository extends JpaRepository<ClSchedule, Long> {
+public interface ClScheduleRepository
+        extends JpaRepository<ClSchedule, Long> {
 
     List<ClSchedule> findByLoanId(Long loanId);
+
+    void deleteByLoanId(Long loanId);
 }

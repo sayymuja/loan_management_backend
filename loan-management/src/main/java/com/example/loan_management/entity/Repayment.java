@@ -31,7 +31,7 @@ public class Repayment {
     private Double totalAmount;
 
     @Column(name = "regular_repayment")
-    private String regularRepayment;
+    private Boolean regularRepayment;
 
     @Column(name = "penalty_amount")
     private Double penaltyAmount;

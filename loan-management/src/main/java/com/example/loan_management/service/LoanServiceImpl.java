@@ -4,9 +4,11 @@ import com.example.loan_management.dto.LoanDto;
 import com.example.loan_management.entity.Loan;
 import com.example.loan_management.entity.Repayment;
 import com.example.loan_management.entity.VoAlf;
+import com.example.loan_management.repository.ClScheduleRepository;
 import com.example.loan_management.repository.LoanRepository;
 import com.example.loan_management.repository.RepaymentRepository;
 import com.example.loan_management.repository.VoAlfRepository;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
@@ -21,8 +23,8 @@ public class LoanServiceImpl implements LoanService {
     private final LoanRepository loanRepository;
     private final VoAlfRepository voAlfRepository;
     private final RepaymentRepository repaymentRepository;
+    private final ClScheduleRepository clScheduleRepository;
     private final ModelMapper modelMapper;
-
     // =========================================================
     // CREATE
     // =========================================================
@@ -289,6 +291,7 @@ public class LoanServiceImpl implements LoanService {
     // =========================================================
 
     @Override
+    @Transactional
     public void delete(Long id) {
 
         Loan loan =
@@ -298,6 +301,24 @@ public class LoanServiceImpl implements LoanService {
                                         "Loan not found"
                                 )
                         );
+
+        // -----------------------------------------------------
+        // Delete CL Schedule records
+        // -----------------------------------------------------
+
+        clScheduleRepository.deleteAll(
+                clScheduleRepository.findByLoanId(id)
+        );
+
+        // -----------------------------------------------------
+        // Delete Repayment records
+        // -----------------------------------------------------
+
+        repaymentRepository.deleteByLoanId(id);
+
+        // -----------------------------------------------------
+        // Finally delete Loan
+        // -----------------------------------------------------
 
         loanRepository.delete(loan);
     }

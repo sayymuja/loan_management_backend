@@ -4,6 +4,7 @@ import com.example.loan_management.dto.RepaymentDto;
 import com.example.loan_management.dto.RepaymentSummaryDto;
 import com.example.loan_management.service.RepaymentService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -58,17 +59,22 @@ public class RepaymentController {
         return repaymentService.generateSchedule(loanId);
     }
 
-    @PutMapping("/pay/{repaymentId}")
-    public RepaymentDto payEmi(
-            @PathVariable Long repaymentId,
+    @PostMapping("/pay/{id}")
+    public ResponseEntity<RepaymentDto> payEmi(
+            @PathVariable Long id,
             @RequestParam Double paidAmount,
-            @RequestParam Double penaltyAmount) {
+            @RequestParam Double penaltyAmount,
+            @RequestParam Boolean regularRepayment) {
 
-        return repaymentService.payEmi(
-                repaymentId,
-                paidAmount,
-                penaltyAmount
-        );
+        RepaymentDto updated =
+                repaymentService.payEmi(
+                        id,
+                        paidAmount,
+                        penaltyAmount,
+                        regularRepayment
+                );
+
+        return ResponseEntity.ok(updated);
     }
     @PutMapping("/edit-paid/{repaymentId}")
     public RepaymentDto editPaidEmi(

@@ -8,6 +8,7 @@ import com.example.loan_management.repository.LoanRepository;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -19,17 +20,25 @@ public class ClScheduleServiceImpl implements ClScheduleService {
     private final LoanRepository loanRepository;
     private final ModelMapper modelMapper;
 
+
+    // ==========================================
+    // CREATE
+    // ==========================================
+
     @Override
     public ClScheduleDto create(ClScheduleDto dto) {
 
         Loan loan = loanRepository.findById(dto.getLoanId())
-                .orElseThrow(() -> new RuntimeException("Loan not found"));
+                .orElseThrow(() ->
+                        new RuntimeException("Loan not found"));
 
-        ClSchedule schedule = modelMapper.map(dto, ClSchedule.class);
+        ClSchedule schedule =
+                modelMapper.map(dto, ClSchedule.class);
 
         schedule.setLoan(loan);
 
-        ClSchedule saved = clScheduleRepository.save(schedule);
+        ClSchedule saved =
+                clScheduleRepository.save(schedule);
 
         ClScheduleDto response =
                 modelMapper.map(saved, ClScheduleDto.class);
@@ -39,6 +48,11 @@ public class ClScheduleServiceImpl implements ClScheduleService {
         return response;
     }
 
+
+    // ==========================================
+    // GET ALL
+    // ==========================================
+
     @Override
     public List<ClScheduleDto> getAll() {
 
@@ -47,169 +61,400 @@ public class ClScheduleServiceImpl implements ClScheduleService {
                 .map(schedule -> {
 
                     ClScheduleDto dto =
-                            modelMapper.map(schedule, ClScheduleDto.class);
+                            modelMapper.map(
+                                    schedule,
+                                    ClScheduleDto.class
+                            );
 
-                    dto.setLoanId(schedule.getLoan().getId());
+                    dto.setLoanId(
+                            schedule.getLoan().getId()
+                    );
 
                     return dto;
+
                 })
                 .toList();
     }
 
+
+    // ==========================================
+    // GET BY ID
+    // ==========================================
+
     @Override
     public ClScheduleDto getById(Long id) {
 
-        ClSchedule schedule = clScheduleRepository.findById(id)
-                .orElseThrow(() ->
-                        new RuntimeException("CL Schedule not found"));
+        ClSchedule schedule =
+                clScheduleRepository.findById(id)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "CL Schedule not found"
+                                )
+                        );
 
         ClScheduleDto dto =
-                modelMapper.map(schedule, ClScheduleDto.class);
+                modelMapper.map(
+                        schedule,
+                        ClScheduleDto.class
+                );
 
-        dto.setLoanId(schedule.getLoan().getId());
+        dto.setLoanId(
+                schedule.getLoan().getId()
+        );
 
         return dto;
     }
 
+
+    // ==========================================
+    // UPDATE
+    // ==========================================
+
     @Override
-    public ClScheduleDto update(Long id, ClScheduleDto dto) {
+    public ClScheduleDto update(
+            Long id,
+            ClScheduleDto dto) {
 
-        ClSchedule schedule = clScheduleRepository.findById(id)
-                .orElseThrow(() ->
-                        new RuntimeException("CL Schedule not found"));
+        ClSchedule schedule =
+                clScheduleRepository.findById(id)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "CL Schedule not found"
+                                )
+                        );
 
-        Loan loan = loanRepository.findById(dto.getLoanId())
-                .orElseThrow(() -> new RuntimeException("Loan not found"));
+        Loan loan =
+                loanRepository.findById(dto.getLoanId())
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Loan not found"
+                                )
+                        );
 
         schedule.setLoan(loan);
-        schedule.setInstallmentNo(dto.getInstallmentNo());
-        schedule.setOutstandingAmount(dto.getOutstandingAmount());
-        schedule.setPrincipalAmount(dto.getPrincipalAmount());
-        schedule.setInterestAmount(dto.getInterestAmount());
-        schedule.setMonthlyInstallment(dto.getMonthlyInstallment());
+
+        schedule.setInstallmentNo(
+                dto.getInstallmentNo()
+        );
+
+        schedule.setOutstandingAmount(
+                dto.getOutstandingAmount()
+        );
+
+        schedule.setPrincipalAmount(
+                dto.getPrincipalAmount()
+        );
+
+        schedule.setInterestAmount(
+                dto.getInterestAmount()
+        );
+
+        schedule.setMonthlyInstallment(
+                dto.getMonthlyInstallment()
+        );
+
         schedule.setAverageMonthlyInstallment(
                 dto.getAverageMonthlyInstallment()
         );
-        schedule.setRemark(dto.getRemark());
+
+        schedule.setRemark(
+                dto.getRemark()
+        );
 
         ClSchedule updated =
                 clScheduleRepository.save(schedule);
 
         ClScheduleDto response =
-                modelMapper.map(updated, ClScheduleDto.class);
+                modelMapper.map(
+                        updated,
+                        ClScheduleDto.class
+                );
 
-        response.setLoanId(updated.getLoan().getId());
+        response.setLoanId(
+                updated.getLoan().getId()
+        );
 
         return response;
     }
 
+
+    // ==========================================
+    // DELETE BY ID
+    // ==========================================
+
     @Override
     public void delete(Long id) {
 
-        ClSchedule schedule = clScheduleRepository.findById(id)
-                .orElseThrow(() ->
-                        new RuntimeException("CL Schedule not found"));
+        ClSchedule schedule =
+                clScheduleRepository.findById(id)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "CL Schedule not found"
+                                )
+                        );
 
         clScheduleRepository.delete(schedule);
     }
+
+
+    // ==========================================
+    // GENERATE / REPLACE CL SCHEDULE
+    // ==========================================
+
     @Override
-    public List<ClScheduleDto> generateSchedule(Long loanId) {
+    @Transactional
+    public List<ClScheduleDto> generateSchedule(
+            Long loanId) {
 
-        Loan loan = loanRepository.findById(loanId)
-                .orElseThrow(() -> new RuntimeException("Loan not found"));
+        // ==========================================
+        // 1. FIND LOAN
+        // ==========================================
 
-        List<ClSchedule> existingSchedules =
-                clScheduleRepository.findByLoanId(loanId);
+        Loan loan =
+                loanRepository.findById(loanId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Loan not found"
+                                )
+                        );
 
-        if (!existingSchedules.isEmpty()) {
-            clScheduleRepository.deleteAll(existingSchedules);
-        }
 
-        int months = loan.getRepaymentPeriodMonths();
+        // ==========================================
+        // 2. DELETE EXISTING SCHEDULE
+        // ==========================================
 
-        double loanAmount = loan.getLoanAmount();
-        double annualInterestRate = loan.getInterestRate();
+        clScheduleRepository.deleteByLoanId(loanId);
 
-        // Monthly interest rate
-        double monthlyRate = annualInterestRate / 100 / 12;
 
-        // EMI calculation
-        double emi = loanAmount * monthlyRate *
-                Math.pow(1 + monthlyRate, months)
-                / (Math.pow(1 + monthlyRate, months) - 1);
+        // ==========================================
+        // 3. GET LOAN DETAILS
+        // ==========================================
 
-        List<ClScheduleDto> result = new java.util.ArrayList<>();
+        int months =
+                loan.getRepaymentPeriodMonths();
 
-        double outstanding = loanAmount;
+        double loanAmount =
+                loan.getLoanAmount();
+
+        double annualInterestRate =
+                loan.getInterestRate();
+
+
+        // ==========================================
+        // 4. MONTHLY INTEREST RATE
+        // ==========================================
+
+        double monthlyRate =
+                annualInterestRate / 100 / 12;
+
+
+        // ==========================================
+        // 5. EMI CALCULATION
+        // ==========================================
+
+        double emi =
+                loanAmount
+                        * monthlyRate
+                        * Math.pow(
+                        1 + monthlyRate,
+                        months
+                )
+                        /
+                        (
+                                Math.pow(
+                                        1 + monthlyRate,
+                                        months
+                                ) - 1
+                        );
+
+
+        List<ClScheduleDto> result =
+                new java.util.ArrayList<>();
+
+        double outstanding =
+                loanAmount;
+
+
+        // ==========================================
+        // 6. GENERATE NEW SCHEDULE
+        // ==========================================
 
         for (int i = 1; i <= months; i++) {
 
-            // Interest on current outstanding balance
-            double interest = outstanding * monthlyRate;
+            // --------------------------------------
+            // Interest on current outstanding
+            // --------------------------------------
 
-            // Principal = EMI - Interest
-            double principal = emi - interest;
+            double interest =
+                    outstanding * monthlyRate;
 
+
+            // --------------------------------------
+            // Principal
+            // --------------------------------------
+
+            double principal =
+                    emi - interest;
+
+
+            // --------------------------------------
             // Last installment adjustment
+            // --------------------------------------
+
             if (i == months) {
-                principal = outstanding;
+
+                principal =
+                        outstanding;
             }
 
-            double monthlyInstallment = principal + interest;
 
-            ClSchedule schedule = new ClSchedule();
+            // --------------------------------------
+            // Monthly installment
+            // --------------------------------------
+
+            double monthlyInstallment =
+                    principal + interest;
+
+
+            // --------------------------------------
+            // Create Schedule
+            // --------------------------------------
+
+            ClSchedule schedule =
+                    new ClSchedule();
 
             schedule.setLoan(loan);
+
             schedule.setInstallmentNo(i);
 
-            // Round to 2 decimal places
+
+            // --------------------------------------
+            // Outstanding Amount
+            // --------------------------------------
+
             schedule.setOutstandingAmount(
-                    Math.round(outstanding * 100.0) / 100.0
+                    Math.round(
+                            outstanding * 100.0
+                    ) / 100.0
             );
+
+
+            // --------------------------------------
+            // Principal Amount
+            // --------------------------------------
 
             schedule.setPrincipalAmount(
-                    Math.round(principal * 100.0) / 100.0
+                    Math.round(
+                            principal * 100.0
+                    ) / 100.0
             );
+
+
+            // --------------------------------------
+            // Interest Amount
+            // --------------------------------------
 
             schedule.setInterestAmount(
-                    Math.round(interest * 100.0) / 100.0
+                    Math.round(
+                            interest * 100.0
+                    ) / 100.0
             );
+
+
+            // --------------------------------------
+            // Monthly Installment
+            // --------------------------------------
 
             schedule.setMonthlyInstallment(
-                    Math.round(monthlyInstallment * 100.0) / 100.0
+                    Math.round(
+                            monthlyInstallment * 100.0
+                    ) / 100.0
             );
 
-            schedule.setAverageMonthlyInstallment(0.0);
+
+            // --------------------------------------
+            // Average Monthly Installment
+            // --------------------------------------
+
+            schedule.setAverageMonthlyInstallment(
+                    0.0
+            );
+
+
+            // --------------------------------------
+            // Remark
+            // --------------------------------------
 
             schedule.setRemark("");
 
+
+            // --------------------------------------
+            // Save
+            // --------------------------------------
+
             ClSchedule saved =
-                    clScheduleRepository.save(schedule);
+                    clScheduleRepository.save(
+                            schedule
+                    );
+
+
+            // --------------------------------------
+            // Convert Entity -> DTO
+            // --------------------------------------
 
             ClScheduleDto dto =
-                    modelMapper.map(saved, ClScheduleDto.class);
+                    modelMapper.map(
+                            saved,
+                            ClScheduleDto.class
+                    );
 
             dto.setLoanId(loanId);
 
             result.add(dto);
 
-            outstanding = outstanding - principal;
+
+            // --------------------------------------
+            // Update Outstanding
+            // --------------------------------------
+
+            outstanding =
+                    outstanding - principal;
         }
+
+
+        // ==========================================
+        // 7. RETURN NEW SCHEDULE
+        // ==========================================
 
         return result;
     }
-    @Override
-    public List<ClScheduleDto> getByLoanId(Long loanId) {
 
-        return clScheduleRepository.findByLoanId(loanId)
+
+    // ==========================================
+    // GET BY LOAN ID
+    // ==========================================
+
+    @Override
+    public List<ClScheduleDto> getByLoanId(
+            Long loanId) {
+
+        return clScheduleRepository
+                .findByLoanId(loanId)
                 .stream()
                 .map(schedule -> {
-                    ClScheduleDto dto =
-                            modelMapper.map(schedule, ClScheduleDto.class);
 
-                    dto.setLoanId(schedule.getLoan().getId());
+                    ClScheduleDto dto =
+                            modelMapper.map(
+                                    schedule,
+                                    ClScheduleDto.class
+                            );
+
+                    dto.setLoanId(
+                            schedule.getLoan().getId()
+                    );
 
                     return dto;
+
                 })
                 .toList();
     }

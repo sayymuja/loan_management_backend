@@ -8,4 +8,6 @@ import java.util.List;
 public interface RepaymentRepository extends JpaRepository<Repayment, Long> {
 
     List<Repayment> findByLoanId(Long loanId);
+
+    void deleteByLoanId(Long loanId);
 }

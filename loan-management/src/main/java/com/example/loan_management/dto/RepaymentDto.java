@@ -19,7 +19,7 @@ public class RepaymentDto {
 
     private Double totalAmount;
 
-    private String regularRepayment;
+    private Boolean regularRepayment;
 
     private Double penaltyAmount;
 
