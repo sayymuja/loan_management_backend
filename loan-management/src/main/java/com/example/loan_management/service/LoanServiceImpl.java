@@ -77,7 +77,7 @@ public class LoanServiceImpl implements LoanService {
 
         loan.setMonthlyEmi(
                 calculateEmi(
-                        loanDto.getSanctionedAmount(),
+                        loan.getLoanAmount(),
                         loanDto.getInterestRate(),
                         loanDto.getRepaymentPeriodMonths(),
                         loanDto.getInterestType()
@@ -267,7 +267,7 @@ public class LoanServiceImpl implements LoanService {
 
         loan.setMonthlyEmi(
                 calculateEmi(
-                        loan.getSanctionedAmount(),
+                        loan.getLoanAmount(),
                         loan.getInterestRate(),
                         loan.getRepaymentPeriodMonths(),
                         loan.getInterestType()

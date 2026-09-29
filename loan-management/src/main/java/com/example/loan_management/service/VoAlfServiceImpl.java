@@ -19,6 +19,11 @@ public class VoAlfServiceImpl implements VoAlfService {
     private final CmrcRepository cmrcRepository;
     private final ModelMapper modelMapper;
 
+
+    // ==========================================
+    // CREATE
+    // ==========================================
+
     @Override
     public VoAlfDto create(VoAlfDto voAlfDto) {
 
@@ -27,16 +32,28 @@ public class VoAlfServiceImpl implements VoAlfService {
 
         VoAlf voAlf = modelMapper.map(voAlfDto, VoAlf.class);
 
+        // Set CMRC relationship
         voAlf.setCmrc(cmrc);
 
+        // createdDate automatically set by @PrePersist
         VoAlf savedVoAlf = voAlfRepository.save(voAlf);
 
-        VoAlfDto response = modelMapper.map(savedVoAlf, VoAlfDto.class);
+        // Convert Entity -> DTO
+        VoAlfDto response =
+                modelMapper.map(savedVoAlf, VoAlfDto.class);
 
-        response.setCmrcId(savedVoAlf.getCmrc().getId());
+        // Set CMRC ID
+        response.setCmrcId(
+                savedVoAlf.getCmrc().getId()
+        );
 
         return response;
     }
+
+
+    // ==========================================
+    // GET ALL
+    // ==========================================
 
     @Override
     public List<VoAlfDto> getAll() {
@@ -45,9 +62,15 @@ public class VoAlfServiceImpl implements VoAlfService {
                 .stream()
                 .map(voAlf -> {
 
-                    VoAlfDto dto = modelMapper.map(voAlf, VoAlfDto.class);
+                    VoAlfDto dto =
+                            modelMapper.map(
+                                    voAlf,
+                                    VoAlfDto.class
+                            );
 
-                    dto.setCmrcId(voAlf.getCmrc().getId());
+                    dto.setCmrcId(
+                            voAlf.getCmrc().getId()
+                    );
 
                     return dto;
 
@@ -55,63 +78,164 @@ public class VoAlfServiceImpl implements VoAlfService {
                 .toList();
     }
 
+
+    // ==========================================
+    // GET BY ID
+    // ==========================================
+
     @Override
     public VoAlfDto getById(Long id) {
 
-        VoAlf voAlf = voAlfRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("VO/ALF not found"));
+        VoAlf voAlf =
+                voAlfRepository.findById(id)
+                        .orElseThrow(
+                                () -> new RuntimeException(
+                                        "VO/ALF not found"
+                                )
+                        );
 
-        VoAlfDto dto = modelMapper.map(voAlf, VoAlfDto.class);
+        VoAlfDto dto =
+                modelMapper.map(
+                        voAlf,
+                        VoAlfDto.class
+                );
 
-        dto.setCmrcId(voAlf.getCmrc().getId());
+        dto.setCmrcId(
+                voAlf.getCmrc().getId()
+        );
 
         return dto;
     }
+
+
+    // ==========================================
+    // GET BY CMRC ID
+    // ==========================================
+
     @Override
     public List<VoAlfDto> getByCmrcId(Long cmrcId) {
 
         List<VoAlf> voAlfList =
                 voAlfRepository.findByCmrcId(cmrcId);
 
-        return voAlfList.stream()
+        return voAlfList
+                .stream()
                 .map(voAlf -> {
-                    VoAlfDto dto = modelMapper.map(voAlf, VoAlfDto.class);
-                    dto.setCmrcId(voAlf.getCmrc().getId());
+
+                    VoAlfDto dto =
+                            modelMapper.map(
+                                    voAlf,
+                                    VoAlfDto.class
+                            );
+
+                    dto.setCmrcId(
+                            voAlf.getCmrc().getId()
+                    );
+
                     return dto;
+
                 })
                 .toList();
     }
 
+
+    // ==========================================
+    // UPDATE
+    // ==========================================
+
     @Override
-    public VoAlfDto update(Long id, VoAlfDto voAlfDto) {
+    public VoAlfDto update(
+            Long id,
+            VoAlfDto voAlfDto
+    ) {
 
-        VoAlf voAlf = voAlfRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("VO/ALF not found"));
+        VoAlf voAlf =
+                voAlfRepository.findById(id)
+                        .orElseThrow(
+                                () -> new RuntimeException(
+                                        "VO/ALF not found"
+                                )
+                        );
 
-        Cmrc cmrc = cmrcRepository.findById(voAlfDto.getCmrcId())
-                .orElseThrow(() -> new RuntimeException("CMRC not found"));
+        Cmrc cmrc =
+                cmrcRepository.findById(
+                                voAlfDto.getCmrcId()
+                        )
+                        .orElseThrow(
+                                () -> new RuntimeException(
+                                        "CMRC not found"
+                                )
+                        );
 
-        voAlf.setSerialNo(voAlfDto.getSerialNo());
+
+        // ==========================================
+        // Update editable fields
+        // ==========================================
+
         voAlf.setCmrc(cmrc);
-        voAlf.setVillageName(voAlfDto.getVillageName());
-        voAlf.setVoAlfName(voAlfDto.getVoAlfName());
-        voAlf.setAccountNo(voAlfDto.getAccountNo());
-        voAlf.setReceivedFund(voAlfDto.getReceivedFund());
 
-        VoAlf updated = voAlfRepository.save(voAlf);
+        voAlf.setVillageName(
+                voAlfDto.getVillageName()
+        );
 
-        VoAlfDto response = modelMapper.map(updated, VoAlfDto.class);
+        voAlf.setVoAlfName(
+                voAlfDto.getVoAlfName()
+        );
 
-        response.setCmrcId(updated.getCmrc().getId());
+        voAlf.setAccountNo(
+                voAlfDto.getAccountNo()
+        );
+
+        voAlf.setReceivedFund(
+                voAlfDto.getReceivedFund()
+        );
+
+
+        // ==========================================
+        // IMPORTANT
+        // ==========================================
+        // serialNo removed
+        // createdDate NOT updated
+        //
+        // createdDate should remain the
+        // original creation date.
+        // ==========================================
+
+
+        VoAlf updated =
+                voAlfRepository.save(voAlf);
+
+
+        // Entity -> DTO
+
+        VoAlfDto response =
+                modelMapper.map(
+                        updated,
+                        VoAlfDto.class
+                );
+
+        response.setCmrcId(
+                updated.getCmrc().getId()
+        );
 
         return response;
     }
 
+
+    // ==========================================
+    // DELETE
+    // ==========================================
+
     @Override
     public void delete(Long id) {
 
-        VoAlf voAlf = voAlfRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("VO/ALF not found"));
+        VoAlf voAlf =
+                voAlfRepository.findById(id)
+                        .orElseThrow(
+                                () -> new RuntimeException(
+                                        "VO/ALF not found"
+                                )
+                        );
 
         voAlfRepository.delete(voAlf);
     }

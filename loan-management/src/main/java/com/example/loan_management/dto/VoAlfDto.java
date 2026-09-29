@@ -2,12 +2,12 @@ package com.example.loan_management.dto;
 
 import lombok.Data;
 
+import java.time.LocalDateTime;
+
 @Data
 public class VoAlfDto {
 
     private Long id;
-
-    private Integer serialNo;
 
     private Long cmrcId;
 
@@ -18,4 +18,6 @@ public class VoAlfDto {
     private String accountNo;
 
     private Double receivedFund;
+
+    private LocalDateTime createdDate;
 }

@@ -3,6 +3,8 @@ package com.example.loan_management.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "vo_alf")
 @Data
@@ -11,9 +13,6 @@ public class VoAlf {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @Column(name = "serial_no")
-    private Integer serialNo;
 
     @ManyToOne
     @JoinColumn(name = "cmrc_id", nullable = false)
@@ -30,4 +29,14 @@ public class VoAlf {
 
     @Column(name = "received_fund")
     private Double receivedFund;
+
+    @Column(name = "created_date", nullable = false, updatable = false)
+    private LocalDateTime createdDate;
+
+    @PrePersist
+    protected void onCreate() {
+        if (createdDate == null) {
+            createdDate = LocalDateTime.now();
+        }
+    }
 }
