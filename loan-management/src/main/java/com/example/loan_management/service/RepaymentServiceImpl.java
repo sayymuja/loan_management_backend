@@ -173,42 +173,190 @@ public class RepaymentServiceImpl implements RepaymentService {
 
         Loan loan = loanRepository.findById(loanId)
                 .orElseThrow(() ->
-                        new RuntimeException("Loan not found with id: " + loanId)
+                        new RuntimeException(
+                                "Loan not found with id: " + loanId
+                        )
                 );
 
-        // ==========================================
-        // 1. DELETE EXISTING REPAYMENT SCHEDULE
-        // ==========================================
+        // =====================================================
+        // 1. VALIDATION
+        // =====================================================
+
+        if (loan.getLoanAmount() == null || loan.getLoanAmount() <= 0) {
+            throw new RuntimeException("Loan amount is invalid");
+        }
+
+        if (loan.getInterestRate() == null || loan.getInterestRate() < 0) {
+            throw new RuntimeException("Interest rate is invalid");
+        }
+
+        if (loan.getMonthlyEmi() == null || loan.getMonthlyEmi() <= 0) {
+            throw new RuntimeException("Monthly EMI is invalid");
+        }
+
+        if (loan.getRepaymentPeriodMonths() == null
+                || loan.getRepaymentPeriodMonths() <= 0) {
+            throw new RuntimeException("Repayment period is invalid");
+        }
+
+        if (loan.getLoanGivenDate() == null) {
+            throw new RuntimeException("Loan given date is required");
+        }
+
+        // =====================================================
+        // 2. DELETE EXISTING SCHEDULE
+        // =====================================================
 
         List<Repayment> existingRepayments =
                 repaymentRepository.findByLoanId(loanId);
 
-        if (existingRepayments != null && !existingRepayments.isEmpty()) {
+        if (!existingRepayments.isEmpty()) {
+
             repaymentRepository.deleteAll(existingRepayments);
+
+            repaymentRepository.flush();
         }
 
-        // ==========================================
-        // 2. GENERATE NEW SCHEDULE
-        // ==========================================
+        // =====================================================
+        // 3. LOAN CALCULATION
+        // =====================================================
 
-        List<Repayment> repaymentList = new ArrayList<>();
+        double outstandingPrincipal =
+                loan.getLoanAmount();
 
-        // Tumhara existing EMI/schedule calculation
-        // yahan same code rahega
+        double monthlyRate =
+                loan.getInterestRate() / 12.0 / 100.0;
 
-        // example:
-        // for (int i = 1; i <= loan.getRepaymentPeriodMonths(); i++) {
-        //     Repayment repayment = new Repayment();
-        //     ...
-        //     repayment.setLoan(loan);
-        //     repaymentList.add(repayment);
-        // }
+        double emi =
+                loan.getMonthlyEmi();
+
+        int totalInstallments =
+                loan.getRepaymentPeriodMonths();
+
+        LocalDate firstInstallmentDate =
+                loan.getLoanGivenDate().plusMonths(1);
+
+        // =====================================================
+        // 4. GENERATE NEW SCHEDULE
+        // =====================================================
+
+        List<Repayment> repaymentList =
+                new ArrayList<>();
+
+        for (int i = 1; i <= totalInstallments; i++) {
+
+            Repayment repayment =
+                    new Repayment();
+
+            repayment.setLoan(loan);
+
+            // Installment number
+            repayment.setInstallmentNo(i);
+
+            // Installment date
+            repayment.setInstallmentDate(
+                    firstInstallmentDate.plusMonths(i - 1)
+            );
+
+            // Monthly interest
+            double interestAmount =
+                    outstandingPrincipal * monthlyRate;
+
+            // Principal
+            double principalAmount =
+                    emi - interestAmount;
+
+            if (principalAmount < 0) {
+                principalAmount = 0;
+            }
+
+            if (principalAmount > outstandingPrincipal) {
+                principalAmount = outstandingPrincipal;
+            }
+
+            // Scheduled amount
+            double scheduledAmount =
+                    principalAmount + interestAmount;
+
+            // Last installment adjustment
+            if (i == totalInstallments) {
+
+                principalAmount =
+                        outstandingPrincipal;
+
+                scheduledAmount =
+                        principalAmount + interestAmount;
+            }
+
+            // =================================================
+            // SET VALUES
+            // =================================================
+
+            repayment.setPrincipalAmount(
+                    round(principalAmount)
+            );
+
+            repayment.setInterestAmount(
+                    round(interestAmount)
+            );
+
+            repayment.setScheduledAmount(
+                    round(scheduledAmount)
+            );
+
+            repayment.setPaidAmount(0.0);
+
+            repayment.setPenaltyAmount(0.0);
+
+            repayment.setTotalAmount(0.0);
+
+            repayment.setRegularRepayment(false);
+
+            repayment.setPaymentStatus("PENDING");
+
+            repayment.setRepaymentDate(null);
+
+            repayment.setRemark(null);
+
+            // Add to list
+            repaymentList.add(repayment);
+
+            // Reduce outstanding principal
+            outstandingPrincipal =
+                    outstandingPrincipal - principalAmount;
+
+            if (outstandingPrincipal < 0.01) {
+                outstandingPrincipal = 0.0;
+            }
+        }
+
+        // =====================================================
+        // 5. SAVE NEW SCHEDULE
+        // =====================================================
 
         List<Repayment> savedList =
                 repaymentRepository.saveAll(repaymentList);
 
+        // =====================================================
+        // 6. RETURN DTO
+        // =====================================================
+
         return savedList.stream()
-                .map(repayment -> modelMapper.map(repayment, RepaymentDto.class))
+                .map(repayment -> {
+
+                    RepaymentDto dto =
+                            modelMapper.map(
+                                    repayment,
+                                    RepaymentDto.class
+                            );
+
+                    dto.setLoanId(
+                            repayment.getLoan().getId()
+                    );
+
+                    return dto;
+
+                })
                 .collect(Collectors.toList());
     }
     private void calculateRepayment(
@@ -227,126 +375,343 @@ public class RepaymentServiceImpl implements RepaymentService {
                 ? loan.getInterestRate()
                 : 0.0;
 
+
+        // =====================================================
+        // GET ACTUAL PAID PRINCIPAL
+        // =====================================================
+
         List<Repayment> previousRepayments =
                 repaymentRepository.findByLoanId(loan.getId());
 
+
         double paidPrincipal = previousRepayments.stream()
-                .filter(r -> r.getId() == null
-                        || !r.getId().equals(repayment.getId()))
-                .mapToDouble(r -> r.getPrincipalAmount() != null
-                        ? Math.max(r.getPrincipalAmount(), 0.0)
-                        : 0.0)
+
+                .filter(r ->
+                        r.getId() == null
+                                || !r.getId().equals(repayment.getId())
+                )
+
+                .filter(r ->
+                        "PAID".equalsIgnoreCase(
+                                r.getPaymentStatus()
+                        )
+                                ||
+                                "PARTIAL".equalsIgnoreCase(
+                                        r.getPaymentStatus()
+                                )
+                )
+
+                .mapToDouble(r ->
+                        r.getPrincipalAmount() != null
+                                ? Math.max(
+                                r.getPrincipalAmount(),
+                                0.0
+                        )
+                                : 0.0
+                )
+
                 .sum();
 
+
+        // =====================================================
+        // OUTSTANDING PRINCIPAL
+        // =====================================================
+
         double outstandingPrincipal =
-                Math.max(loanAmount - paidPrincipal, 0.0);
+                Math.max(
+                        loanAmount - paidPrincipal,
+                        0.0
+                );
+
+
+        // =====================================================
+        // MONTHLY INTEREST
+        // =====================================================
 
         double monthlyInterest =
-                outstandingPrincipal * annualRate / 12 / 100;
+                outstandingPrincipal
+                        * annualRate
+                        / 12
+                        / 100;
 
-        /*
-         * Interest cannot be negative
-         */
+
+        // =====================================================
+        // CURRENT PAYMENT INTEREST
+        // =====================================================
+
         double interest =
-                Math.max(0.0, Math.min(paidAmount, monthlyInterest));
+                Math.max(
+                        0.0,
+                        Math.min(
+                                paidAmount,
+                                monthlyInterest
+                        )
+                );
 
-        /*
-         * Principal cannot be negative
-         */
+
+        // =====================================================
+        // CURRENT PAYMENT PRINCIPAL
+        // =====================================================
+
         double principalPaid =
-                Math.max(0.0, paidAmount - interest);
+                Math.max(
+                        0.0,
+                        paidAmount - interest
+                );
 
-        repayment.setInterestAmount(interest);
-        repayment.setPrincipalAmount(principalPaid);
+
+        // =====================================================
+        // SET VALUES
+        // =====================================================
+
+        repayment.setInterestAmount(
+                round(interest)
+        );
+
+        repayment.setPrincipalAmount(
+                round(principalPaid)
+        );
     }
     @Override
+    @Transactional
     public RepaymentDto payEmi(
-            Long id,
+            Long repaymentId,
             Double paidAmount,
             Double penaltyAmount,
             Boolean regularRepayment) {
 
-        Repayment repayment = repaymentRepository.findById(id)
-                .orElseThrow(() ->
-                        new RuntimeException("Repayment not found with id: " + id)
-                );
-
-        // Tumhara existing payment logic yahin rahega
-
-        repayment.setPaidAmount(paidAmount);
-        repayment.setPenaltyAmount(penaltyAmount);
-
-        // NEW
-        repayment.setRegularRepayment(regularRepayment);
-
-        // Existing calculations/status logic yahin rahega
-
-        Repayment saved = repaymentRepository.save(repayment);
-
-        return modelMapper.map(saved, RepaymentDto.class);
-    }
-    @Override
-    public RepaymentDto editPaidEmi(
-            Long repaymentId,
-            Double paidAmount,
-            Double penaltyAmount) {
+        // =====================================================
+        // 1. FIND REPAYMENT
+        // =====================================================
 
         Repayment repayment = repaymentRepository.findById(repaymentId)
-                .orElseThrow(() -> new RuntimeException("Repayment not found"));
+                .orElseThrow(() ->
+                        new RuntimeException(
+                                "Repayment not found with id: " + repaymentId
+                        )
+                );
 
-        // Edited Paid Amount
-        double updatedPaidAmount =
-                paidAmount != null
-                        ? paidAmount
-                        : 0.0;
 
-        // Edited Penalty Amount
-        double updatedPenaltyAmount =
-                penaltyAmount != null
-                        ? penaltyAmount
-                        : 0.0;
+        // =====================================================
+        // 2. SAFE VALUES
+        // =====================================================
 
-        // Scheduled EMI
-        double scheduledAmount =
-                repayment.getScheduledAmount() != null
-                        ? repayment.getScheduledAmount()
-                        : 0.0;
+        double paid = paidAmount != null
+                ? paidAmount
+                : 0.0;
 
-        // Replace existing values
-        repayment.setPaidAmount(updatedPaidAmount);
-        repayment.setPenaltyAmount(updatedPenaltyAmount);
+        double penalty = penaltyAmount != null
+                ? penaltyAmount
+                : 0.0;
 
-        // Recalculate payment status
-        if (updatedPaidAmount >= scheduledAmount) {
-            repayment.setPaymentStatus("PAID");
-        } else if (updatedPaidAmount > 0) {
-            repayment.setPaymentStatus("PARTIAL");
-        } else {
+        double scheduled = repayment.getScheduledAmount() != null
+                ? repayment.getScheduledAmount()
+                : 0.0;
+
+
+        // =====================================================
+        // 3. SET PAYMENT VALUES
+        // =====================================================
+
+        repayment.setPaidAmount(paid);
+
+        repayment.setPenaltyAmount(penalty);
+
+        repayment.setRegularRepayment(
+                regularRepayment != null
+                        ? regularRepayment
+                        : false
+        );
+
+
+        // =====================================================
+        // 4. PAYMENT STATUS
+        // =====================================================
+
+        if (paid <= 0) {
+
             repayment.setPaymentStatus("PENDING");
+
+        } else if (paid < scheduled) {
+
+            repayment.setPaymentStatus("PARTIAL");
+
+        } else {
+
+            repayment.setPaymentStatus("PAID");
         }
 
-        repayment.setRepaymentDate(LocalDate.now());
 
-        // Recalculate principal + interest
+        // =====================================================
+        // 5. REPAYMENT DATE
+        // =====================================================
+
+        if (paid > 0) {
+
+            repayment.setRepaymentDate(LocalDate.now());
+
+        } else {
+
+            repayment.setRepaymentDate(null);
+        }
+
+
+        // =====================================================
+        // 6. CALCULATE PRINCIPAL + INTEREST
+        // =====================================================
+
         calculateRepayment(
                 repayment,
                 repayment.getLoan()
         );
 
-        // Paid amount + penalty
+
+        // =====================================================
+        // 7. TOTAL AMOUNT
+        // =====================================================
+
         repayment.setTotalAmount(
-                updatedPaidAmount + updatedPenaltyAmount
+                paid + penalty
         );
+
+
+        // =====================================================
+        // 8. SAVE
+        // =====================================================
 
         Repayment saved =
                 repaymentRepository.save(repayment);
 
-        updateLoanStatus(saved.getLoan().getId());
+
+        // =====================================================
+        // 9. UPDATE LOAN STATUS
+        // =====================================================
+
+        updateLoanStatus(
+                saved.getLoan().getId()
+        );
+
+
+        // =====================================================
+        // 10. RESPONSE
+        // =====================================================
 
         RepaymentDto response =
-                modelMapper.map(saved, RepaymentDto.class);
+                modelMapper.map(
+                        saved,
+                        RepaymentDto.class
+                );
 
-        response.setLoanId(saved.getLoan().getId());
+        response.setLoanId(
+                saved.getLoan().getId()
+        );
+
+        return response;
+    }
+    @Override
+    @Transactional
+    public RepaymentDto editPaidEmi(
+            Long repaymentId,
+            Double paidAmount,
+            Double penaltyAmount) {
+
+        Repayment repayment =
+                repaymentRepository.findById(repaymentId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Repayment not found"
+                                )
+                        );
+
+
+        double paid =
+                paidAmount != null
+                        ? paidAmount
+                        : 0.0;
+
+        double penalty =
+                penaltyAmount != null
+                        ? penaltyAmount
+                        : 0.0;
+
+        double scheduled =
+                repayment.getScheduledAmount() != null
+                        ? repayment.getScheduledAmount()
+                        : 0.0;
+
+
+        repayment.setPaidAmount(paid);
+
+        repayment.setPenaltyAmount(penalty);
+
+
+        // =====================================================
+        // STATUS
+        // =====================================================
+
+        if (paid <= 0) {
+
+            repayment.setPaymentStatus("PENDING");
+
+        } else if (paid < scheduled) {
+
+            repayment.setPaymentStatus("PARTIAL");
+
+        } else {
+
+            repayment.setPaymentStatus("PAID");
+        }
+
+
+        // =====================================================
+        // DATE
+        // =====================================================
+
+        if (paid > 0) {
+
+            repayment.setRepaymentDate(
+                    LocalDate.now()
+            );
+
+        } else {
+
+            repayment.setRepaymentDate(null);
+        }
+
+
+        // =====================================================
+        // CALCULATE PRINCIPAL / INTEREST
+        // =====================================================
+
+        calculateRepayment(
+                repayment,
+                repayment.getLoan()
+        );
+
+
+        repayment.setTotalAmount(
+                paid + penalty
+        );
+
+
+        Repayment saved =
+                repaymentRepository.save(repayment);
+
+
+        updateLoanStatus(
+                saved.getLoan().getId()
+        );
+
+
+        RepaymentDto response =
+                modelMapper.map(
+                        saved,
+                        RepaymentDto.class
+                );
+
+        response.setLoanId(
+                saved.getLoan().getId()
+        );
 
         return response;
     }
@@ -378,6 +743,9 @@ public class RepaymentServiceImpl implements RepaymentService {
         }
 
         loanRepository.save(loan);
+    }
+    private double round(double value) {
+        return Math.round(value * 100.0) / 100.0;
     }
 
 }

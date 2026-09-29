@@ -2,6 +2,8 @@ package com.example.loan_management.dto;
 
 import lombok.Data;
 
+import java.time.LocalDate;
+
 @Data
 public class ClScheduleDto {
 
@@ -10,6 +12,8 @@ public class ClScheduleDto {
     private Long loanId;
 
     private Integer installmentNo;
+
+    private LocalDate installmentDate;
 
     private Double outstandingAmount;
 
@@ -20,6 +24,8 @@ public class ClScheduleDto {
     private Double monthlyInstallment;
 
     private Double averageMonthlyInstallment;
+
+    private Double closingBalance;
 
     private String remark;
 }
