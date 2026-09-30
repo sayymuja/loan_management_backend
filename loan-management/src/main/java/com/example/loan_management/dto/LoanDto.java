@@ -10,47 +10,66 @@ public class LoanDto {
 
     private Long id;
 
-    private Long voAlfId;
 
     // =========================================================
-    // BORROWER DETAILS
+    // HIERARCHY
     // =========================================================
+
+    /*
+     * CMRC
+     */
+    private Long cmrcId;
+
+    private String cmrcName;
+
+
+    /*
+     * VO / ALF
+     */
+    private Long voAlfId;
+
+    private String voAlfName;
+
+
+    /*
+     * GROUP
+     */
+    private Long groupId;
 
     private String groupName;
 
+    private String villageName;
+
+
+    /*
+     * WOMAN / BORROWER
+     */
+    private Long womanId;
+
     private String womanName;
+
 
     // =========================================================
     // LOAN AMOUNT DETAILS
     // =========================================================
 
     /*
-     * Actual loan principal.
-     *
-     * Example:
-     * 4000000
+     * Original sanctioned loan amount.
      */
     private Double sanctionedAmount;
 
-
     /*
      * Processing fee deducted from sanctioned amount.
-     *
-     * Example:
-     * 20000
      */
     private Double processingFee;
-
 
     /*
      * Actual amount disbursed.
      *
      * sanctionedAmount - processingFee
-     *
-     * Example:
-     * 3980000
      */
     private Double loanAmount;
+
 
     // =========================================================
     // LOAN DETAILS
@@ -59,6 +78,7 @@ public class LoanDto {
     private String loanPurpose;
 
     private LocalDate loanGivenDate;
+
 
     // =========================================================
     // REPAYMENT DETAILS
@@ -75,6 +95,7 @@ public class LoanDto {
     private Double monthlyEmi;
 
     private String loanStatus;
+
 
     // =========================================================
     // REPAYMENT SUMMARY

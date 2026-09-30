@@ -1,4 +1,4 @@
-package com.example.loan_management.entity;
+        package com.example.loan_management.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -26,6 +26,27 @@ public class Cmrc {
     @Column(name = "account_opening_date")
     private LocalDate accountOpeningDate;
 
+    // ==============================
+    // LOCATION
+    // ==============================
+
+    @Column(name = "district")
+    private String district;
+
+    @Column(name = "taluka")
+    private String taluka;
+
+    // ==============================
+    // STATUS
+    // ==============================
+
+    @Column(name = "status")
+    private String status;
+
+    // ==============================
+    // CMRC AMOUNT
+    // ==============================
+
     @Column(name = "total_fund")
     private Double totalFund;
 
@@ -47,6 +68,10 @@ public class Cmrc {
     @Column(name = "actual_record_amount_received")
     private Double actualRecordAmountReceived;
 
+    // ==============================
+    // TEZSHREE FUND RECEIVED
+    // ==============================
+
     @Column(name = "tezshree_fund_received_ultra_poor")
     private Double tezshreeFundReceivedUltraPoor;
 
@@ -55,6 +80,10 @@ public class Cmrc {
 
     @Column(name = "tezshree_fund_received_total")
     private Double tezshreeFundReceivedTotal;
+
+    // ==============================
+    // FUND DISTRIBUTION
+    // ==============================
 
     @Column(name = "fund_distributed_village_count")
     private Integer fundDistributedVillageCount;

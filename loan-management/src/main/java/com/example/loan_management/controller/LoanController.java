@@ -3,6 +3,7 @@ package com.example.loan_management.controller;
 import com.example.loan_management.dto.LoanDto;
 import com.example.loan_management.service.LoanService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -43,8 +44,12 @@ public class LoanController {
         loanService.delete(id);
         return "Loan deleted successfully";
     }
-    @GetMapping("/vo-alf/{voAlfId}")
-    public List<LoanDto> getByVoAlfId(@PathVariable Long voAlfId) {
-        return loanService.getByVoAlfId(voAlfId);
+    @GetMapping("/woman/{womanId}")
+    public ResponseEntity<List<LoanDto>> getByWomanId(
+            @PathVariable Long womanId) {
+
+        return ResponseEntity.ok(
+                loanService.getByWomanId(womanId)
+        );
     }
 }

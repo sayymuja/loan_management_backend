@@ -1,4 +1,5 @@
-package com.example.loan_management.dto;
+
+        package com.example.loan_management.dto;
 
 import lombok.Data;
 
@@ -17,6 +18,24 @@ public class CmrcDto {
 
     private LocalDate accountOpeningDate;
 
+    // ==============================
+    // LOCATION
+    // ==============================
+
+    private String district;
+
+    private String taluka;
+
+    // ==============================
+    // STATUS
+    // ==============================
+
+    private String status;
+
+    // ==============================
+    // CMRC AMOUNT
+    // ==============================
+
     private Double totalFund;
 
     private Double serviceFeeReceived;
@@ -31,11 +50,19 @@ public class CmrcDto {
 
     private Double actualRecordAmountReceived;
 
+    // ==============================
+    // TEZSHREE FUND RECEIVED
+    // ==============================
+
     private Double tezshreeFundReceivedUltraPoor;
 
     private Double tezshreeFundReceivedDebtTrappedWomen;
 
     private Double tezshreeFundReceivedTotal;
+
+    // ==============================
+    // FUND DISTRIBUTION
+    // ==============================
 
     private Integer fundDistributedVillageCount;
 
@@ -49,3 +76,4 @@ public class CmrcDto {
 
     private Double distributedTotalFund;
 }
+

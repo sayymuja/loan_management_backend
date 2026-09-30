@@ -1,13 +1,14 @@
 package com.example.loan_management.service;
 
 import com.example.loan_management.dto.LoanDto;
+import com.example.loan_management.entity.Group;
 import com.example.loan_management.entity.Loan;
 import com.example.loan_management.entity.Repayment;
-import com.example.loan_management.entity.VoAlf;
+import com.example.loan_management.entity.Women;
 import com.example.loan_management.repository.ClScheduleRepository;
 import com.example.loan_management.repository.LoanRepository;
 import com.example.loan_management.repository.RepaymentRepository;
-import com.example.loan_management.repository.VoAlfRepository;
+import com.example.loan_management.repository.WomenRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
@@ -21,10 +22,12 @@ import java.util.List;
 public class LoanServiceImpl implements LoanService {
 
     private final LoanRepository loanRepository;
-    private final VoAlfRepository voAlfRepository;
+    private final WomenRepository womenRepository;
     private final RepaymentRepository repaymentRepository;
     private final ClScheduleRepository clScheduleRepository;
     private final ModelMapper modelMapper;
+
+
     // =========================================================
     // CREATE
     // =========================================================
@@ -33,179 +36,69 @@ public class LoanServiceImpl implements LoanService {
     public LoanDto create(LoanDto loanDto) {
 
         // -----------------------------------------------------
-        // Find VO / ALF
+        // Validate Woman
         // -----------------------------------------------------
 
-        VoAlf voAlf =
-                voAlfRepository.findById(
-                        loanDto.getVoAlfId()
-                ).orElseThrow(
-                        () -> new RuntimeException(
-                                "VO/ALF not found"
-                        )
-                );
+        if (loanDto.getWomanId() == null) {
+            throw new RuntimeException("Woman ID is required");
+        }
 
-        // -----------------------------------------------------
-        // Map DTO -> Entity
-        // -----------------------------------------------------
-
-        Loan loan =
-                modelMapper.map(
-                        loanDto,
-                        Loan.class
-                );
-
-        loan.setVoAlf(voAlf);
-
-        // -----------------------------------------------------
-        // Calculate Disbursed / Loan Amount
-        //
-        // loanAmount =
-        // sanctionedAmount - processingFee
-        // -----------------------------------------------------
-
-        loan.setLoanAmount(
-                calculateDisbursedAmount(
-                        loanDto.getSanctionedAmount(),
-                        loanDto.getProcessingFee()
+        Women woman = womenRepository.findById(
+                loanDto.getWomanId()
+        ).orElseThrow(
+                () -> new RuntimeException(
+                        "Woman not found with ID: "
+                                + loanDto.getWomanId()
                 )
         );
 
-        // -----------------------------------------------------
-        // Calculate EMI on SANCTIONED AMOUNT
-        // -----------------------------------------------------
-
-        loan.setMonthlyEmi(
-                calculateEmi(
-                        loan.getLoanAmount(),
-                        loanDto.getInterestRate(),
-                        loanDto.getRepaymentPeriodMonths(),
-                        loanDto.getInterestType()
-                )
-        );
 
         // -----------------------------------------------------
-        // New loan is ACTIVE
+        // Validate Group
         // -----------------------------------------------------
 
-        loan.setLoanStatus("ACTIVE");
-
-        // -----------------------------------------------------
-        // Save
-        // -----------------------------------------------------
-
-        Loan savedLoan =
-                loanRepository.save(loan);
-
-        // -----------------------------------------------------
-        // Entity -> DTO
-        // -----------------------------------------------------
-
-        LoanDto response =
-                modelMapper.map(
-                        savedLoan,
-                        LoanDto.class
-                );
-
-        if (savedLoan.getVoAlf() != null) {
-
-            response.setVoAlfId(
-                    savedLoan.getVoAlf().getId()
+        if (woman.getGroup() == null) {
+            throw new RuntimeException(
+                    "Group not found for selected woman"
             );
         }
 
-        response.setLoanStatus(
-                savedLoan.getLoanStatus()
-        );
+        Group group = woman.getGroup();
 
-        response.setTotalInterestReceived(
-                calculateTotalInterestReceived(
-                        savedLoan.getId()
-                )
-        );
-
-        return response;
-    }
-
-    // =========================================================
-    // GET ALL
-    // =========================================================
-
-    @Override
-    public List<LoanDto> getAll() {
-
-        return loanRepository.findAll()
-                .stream()
-                .map(this::mapLoanToDto)
-                .toList();
-    }
-
-    // =========================================================
-    // GET BY ID
-    // =========================================================
-
-    @Override
-    public LoanDto getById(Long id) {
-
-        Loan loan =
-                loanRepository.findById(id)
-                        .orElseThrow(
-                                () -> new RuntimeException(
-                                        "Loan not found"
-                                )
-                        );
-
-        return mapLoanToDto(loan);
-    }
-
-    // =========================================================
-    // UPDATE
-    // =========================================================
-
-    @Override
-    public LoanDto update(
-            Long id,
-            LoanDto loanDto
-    ) {
 
         // -----------------------------------------------------
-        // Find existing loan
+        // Validate VO / ALF
         // -----------------------------------------------------
 
-        Loan loan =
-                loanRepository.findById(id)
-                        .orElseThrow(
-                                () -> new RuntimeException(
-                                        "Loan not found"
-                                )
-                        );
+        if (group.getVoAlfId() == null) {
+            throw new RuntimeException(
+                    "VO / ALF ID not found for selected group"
+            );
+        }
 
-        // -----------------------------------------------------
-        // Find VO / ALF
-        // -----------------------------------------------------
-
-        VoAlf voAlf =
-                voAlfRepository.findById(
-                        loanDto.getVoAlfId()
-                ).orElseThrow(
-                        () -> new RuntimeException(
-                                "VO/ALF not found"
-                        )
-                );
-
-        loan.setVoAlf(voAlf);
 
         // =====================================================
-        // BORROWER DETAILS
+        // MAP DTO -> ENTITY
         // =====================================================
 
-        loan.setGroupName(
-                loanDto.getGroupName()
+        Loan loan = modelMapper.map(
+                loanDto,
+                Loan.class
         );
 
-        loan.setWomanName(
-                loanDto.getWomanName()
+
+        // =====================================================
+        // HIERARCHY
+        // =====================================================
+
+        // Woman
+        loan.setWoman(woman);
+
+        // VO / ALF
+        loan.setVoAlfId(
+                group.getVoAlfId()
         );
+
 
         // =====================================================
         // LOAN AMOUNT
@@ -219,8 +112,9 @@ public class LoanServiceImpl implements LoanService {
                 loanDto.getProcessingFee()
         );
 
+
         // -----------------------------------------------------
-        // loanAmount = Disbursed Amount
+        // Calculate Disbursed / Loan Amount
         // -----------------------------------------------------
 
         loan.setLoanAmount(
@@ -229,6 +123,7 @@ public class LoanServiceImpl implements LoanService {
                         loanDto.getProcessingFee()
                 )
         );
+
 
         // =====================================================
         // LOAN DETAILS
@@ -241,6 +136,7 @@ public class LoanServiceImpl implements LoanService {
         loan.setLoanGivenDate(
                 loanDto.getLoanGivenDate()
         );
+
 
         // =====================================================
         // REPAYMENT DETAILS
@@ -258,11 +154,9 @@ public class LoanServiceImpl implements LoanService {
                 loanDto.getInterestType()
         );
 
+
         // =====================================================
         // EMI
-        //
-        // IMPORTANT:
-        // EMI is calculated on SANCTIONED AMOUNT
         // =====================================================
 
         loan.setMonthlyEmi(
@@ -274,6 +168,228 @@ public class LoanServiceImpl implements LoanService {
                 )
         );
 
+
+        // =====================================================
+        // STATUS
+        // =====================================================
+
+        loan.setLoanStatus(
+                loanDto.getLoanStatus() != null
+                        ? loanDto.getLoanStatus()
+                        : "ACTIVE"
+        );
+
+
+        // =====================================================
+        // SAVE
+        // =====================================================
+
+        Loan savedLoan =
+                loanRepository.save(loan);
+
+
+        // =====================================================
+        // ENTITY -> DTO
+        // =====================================================
+
+        return mapLoanToDto(savedLoan);
+    }
+
+
+    // =========================================================
+    // GET ALL
+    // =========================================================
+
+    @Override
+    public List<LoanDto> getAll() {
+
+        return loanRepository.findAll()
+                .stream()
+                .map(this::mapLoanToDto)
+                .toList();
+    }
+
+
+    // =========================================================
+    // GET BY ID
+    // =========================================================
+
+    @Override
+    public LoanDto getById(Long id) {
+
+        Loan loan =
+                loanRepository.findById(id)
+                        .orElseThrow(
+                                () -> new RuntimeException(
+                                        "Loan not found with ID: "
+                                                + id
+                                )
+                        );
+
+        return mapLoanToDto(loan);
+    }
+
+
+    // =========================================================
+    // UPDATE
+    // =========================================================
+
+    @Override
+    public LoanDto update(
+            Long id,
+            LoanDto loanDto
+    ) {
+
+        // -----------------------------------------------------
+        // Find Existing Loan
+        // -----------------------------------------------------
+
+        Loan loan =
+                loanRepository.findById(id)
+                        .orElseThrow(
+                                () -> new RuntimeException(
+                                        "Loan not found with ID: "
+                                                + id
+                                )
+                        );
+
+
+        // -----------------------------------------------------
+        // Validate Woman
+        // -----------------------------------------------------
+
+        if (loanDto.getWomanId() == null) {
+            throw new RuntimeException(
+                    "Woman ID is required"
+            );
+        }
+
+        Women woman =
+                womenRepository.findById(
+                        loanDto.getWomanId()
+                ).orElseThrow(
+                        () -> new RuntimeException(
+                                "Woman not found with ID: "
+                                        + loanDto.getWomanId()
+                        )
+                );
+
+
+        // -----------------------------------------------------
+        // Validate Group
+        // -----------------------------------------------------
+
+        if (woman.getGroup() == null) {
+            throw new RuntimeException(
+                    "Group not found for selected woman"
+            );
+        }
+
+        Group group = woman.getGroup();
+
+
+        // -----------------------------------------------------
+        // Validate VO / ALF
+        // -----------------------------------------------------
+
+        if (group.getVoAlfId() == null) {
+            throw new RuntimeException(
+                    "VO / ALF ID not found for selected group"
+            );
+        }
+
+
+        // =====================================================
+        // HIERARCHY
+        // =====================================================
+
+        loan.setWoman(woman);
+
+        loan.setVoAlfId(
+                group.getVoAlfId()
+        );
+
+
+        // =====================================================
+        // LOAN AMOUNT
+        // =====================================================
+
+        loan.setSanctionedAmount(
+                loanDto.getSanctionedAmount()
+        );
+
+        loan.setProcessingFee(
+                loanDto.getProcessingFee()
+        );
+
+
+        // -----------------------------------------------------
+        // Calculate Disbursed Amount
+        // -----------------------------------------------------
+
+        loan.setLoanAmount(
+                calculateDisbursedAmount(
+                        loanDto.getSanctionedAmount(),
+                        loanDto.getProcessingFee()
+                )
+        );
+
+
+        // =====================================================
+        // LOAN DETAILS
+        // =====================================================
+
+        loan.setLoanPurpose(
+                loanDto.getLoanPurpose()
+        );
+
+        loan.setLoanGivenDate(
+                loanDto.getLoanGivenDate()
+        );
+
+
+        // =====================================================
+        // REPAYMENT DETAILS
+        // =====================================================
+
+        loan.setRepaymentPeriodMonths(
+                loanDto.getRepaymentPeriodMonths()
+        );
+
+        loan.setInterestRate(
+                loanDto.getInterestRate()
+        );
+
+        loan.setInterestType(
+                loanDto.getInterestType()
+        );
+
+
+        // =====================================================
+        // EMI
+        // =====================================================
+
+        loan.setMonthlyEmi(
+                calculateEmi(
+                        loan.getLoanAmount(),
+                        loan.getInterestRate(),
+                        loan.getRepaymentPeriodMonths(),
+                        loan.getInterestType()
+                )
+        );
+
+
+        // =====================================================
+        // STATUS
+        // =====================================================
+
+        if (loanDto.getLoanStatus() != null) {
+            loan.setLoanStatus(
+                    loanDto.getLoanStatus()
+            );
+        }
+
+
         // =====================================================
         // SAVE
         // =====================================================
@@ -281,10 +397,10 @@ public class LoanServiceImpl implements LoanService {
         Loan updatedLoan =
                 loanRepository.save(loan);
 
-        return mapLoanToDto(
-                updatedLoan
-        );
+
+        return mapLoanToDto(updatedLoan);
     }
+
 
     // =========================================================
     // DELETE
@@ -298,113 +414,145 @@ public class LoanServiceImpl implements LoanService {
                 loanRepository.findById(id)
                         .orElseThrow(
                                 () -> new RuntimeException(
-                                        "Loan not found"
+                                        "Loan not found with ID: "
+                                                + id
                                 )
                         );
 
+
         // -----------------------------------------------------
-        // Delete CL Schedule records
+        // Delete CL Schedule
         // -----------------------------------------------------
 
         clScheduleRepository.deleteAll(
                 clScheduleRepository.findByLoanId(id)
         );
 
+
         // -----------------------------------------------------
-        // Delete Repayment records
+        // Delete Repayment
         // -----------------------------------------------------
 
         repaymentRepository.deleteByLoanId(id);
 
+
         // -----------------------------------------------------
-        // Finally delete Loan
+        // Delete Loan
         // -----------------------------------------------------
 
         loanRepository.delete(loan);
     }
 
+
     // =========================================================
-    // GET BY VO / ALF
+    // GET LOANS BY WOMAN
     // =========================================================
 
     @Override
-    public List<LoanDto> getByVoAlfId(
-            Long voAlfId
+    public List<LoanDto> getByWomanId(
+            Long womanId
     ) {
 
         return loanRepository
-                .findByVoAlfId(voAlfId)
+                .findByWomanId(womanId)
                 .stream()
                 .map(this::mapLoanToDto)
                 .toList();
     }
 
+
     // =========================================================
     // ENTITY -> DTO
     // =========================================================
 
-    private LoanDto mapLoanToDto(
-            Loan loan
-    ) {
+    private LoanDto mapLoanToDto(Loan loan) {
 
-        LoanDto dto =
-                modelMapper.map(
-                        loan,
-                        LoanDto.class
-                );
+        LoanDto dto = new LoanDto();
 
-        // -----------------------------------------------------
+        // =========================================================
+        // LOAN BASIC DETAILS
+        // =========================================================
+
+        dto.setId(loan.getId());
+
+        dto.setSanctionedAmount(loan.getSanctionedAmount());
+        dto.setProcessingFee(loan.getProcessingFee());
+        dto.setLoanAmount(loan.getLoanAmount());
+
+        dto.setLoanPurpose(loan.getLoanPurpose());
+        dto.setLoanGivenDate(loan.getLoanGivenDate());
+
+        dto.setRepaymentPeriodMonths(
+                loan.getRepaymentPeriodMonths()
+        );
+
+        dto.setInterestRate(loan.getInterestRate());
+        dto.setInterestType(loan.getInterestType());
+        dto.setMonthlyEmi(loan.getMonthlyEmi());
+        dto.setLoanStatus(loan.getLoanStatus());
+
+
+
+        // =========================================================
         // VO / ALF ID
-        // -----------------------------------------------------
+        // =========================================================
 
-        if (loan.getVoAlf() != null) {
+        dto.setVoAlfId(loan.getVoAlfId());
 
-            dto.setVoAlfId(
-                    loan.getVoAlf().getId()
-            );
+
+        // =========================================================
+        // WOMAN
+        // =========================================================
+
+        if (loan.getWoman() != null) {
+
+            Women woman = loan.getWoman();
+
+            dto.setWomanId(woman.getId());
+            dto.setWomanName(woman.getWomanName());
+
+
+            // =====================================================
+            // GROUP
+            // =====================================================
+
+            if (woman.getGroup() != null) {
+
+                Group group = woman.getGroup();
+
+                dto.setGroupId(group.getId());
+                dto.setGroupName(group.getGroupName());
+                dto.setVillageName(group.getVillageName());
+
+                // -------------------------------------------------
+                // CMRC
+                // -------------------------------------------------
+
+                dto.setCmrcId(group.getCmrcId());
+
+                // -------------------------------------------------
+                // VO / ALF
+                // -------------------------------------------------
+
+                dto.setVoAlfId(group.getVoAlfId());
+            }
         }
 
-        // -----------------------------------------------------
-        // Loan Status
-        // -----------------------------------------------------
 
-        dto.setLoanStatus(
-
-                loan.getLoanStatus() != null
-                        ? loan.getLoanStatus()
-                        : "ACTIVE"
-
-        );
-
-        // -----------------------------------------------------
-        // Total Interest Received
-        // -----------------------------------------------------
+        // =========================================================
+        // TOTAL INTEREST RECEIVED
+        // =========================================================
 
         dto.setTotalInterestReceived(
-
-                calculateTotalInterestReceived(
-                        loan.getId()
-                )
-
+                calculateTotalInterestReceived(loan.getId())
         );
+
 
         return dto;
     }
 
     // =========================================================
     // CALCULATE DISBURSED / LOAN AMOUNT
-    // =========================================================
-    //
-    // Formula:
-    //
-    // loanAmount =
-    // sanctionedAmount - processingFee
-    //
-    // Example:
-    //
-    // 4,000,000 - 20,000
-    // = 3,980,000
-    //
     // =========================================================
 
     private Double calculateDisbursedAmount(
@@ -422,15 +570,18 @@ public class LoanServiceImpl implements LoanService {
                         ? processingFee
                         : 0.0;
 
+
         if (sanctioned <= 0) {
             return 0.0;
         }
+
 
         return Math.max(
                 sanctioned - fee,
                 0.0
         );
     }
+
 
     // =========================================================
     // TOTAL INTEREST RECEIVED
@@ -444,21 +595,21 @@ public class LoanServiceImpl implements LoanService {
             return BigDecimal.ZERO;
         }
 
+
         List<Repayment> repayments =
                 repaymentRepository
                         .findByLoanId(loanId);
+
 
         return repayments.stream()
 
                 .map(
                         repayment ->
                                 repayment.getInterestAmount() != null
-
                                         ? BigDecimal.valueOf(
                                         repayment
                                                 .getInterestAmount()
                                 )
-
                                         : BigDecimal.ZERO
                 )
 
@@ -468,16 +619,9 @@ public class LoanServiceImpl implements LoanService {
                 );
     }
 
+
     // =========================================================
     // CALCULATE EMI
-    // =========================================================
-    //
-    // IMPORTANT:
-    //
-    // principal = SANCTIONED AMOUNT
-    //
-    // NOT loanAmount.
-    //
     // =========================================================
 
     private Double calculateEmi(
@@ -496,6 +640,7 @@ public class LoanServiceImpl implements LoanService {
 
             return 0.0;
         }
+
 
         // =====================================================
         // FLAT INTEREST
@@ -520,6 +665,7 @@ public class LoanServiceImpl implements LoanService {
             ) / months;
         }
 
+
         // =====================================================
         // REDUCING BALANCE
         // =====================================================
@@ -528,6 +674,7 @@ public class LoanServiceImpl implements LoanService {
                 annualRate
                         / 12
                         / 100;
+
 
         // -----------------------------------------------------
         // ZERO INTEREST
@@ -538,6 +685,7 @@ public class LoanServiceImpl implements LoanService {
             return principal / months;
         }
 
+
         // -----------------------------------------------------
         // EMI FORMULA
         // -----------------------------------------------------
@@ -547,6 +695,7 @@ public class LoanServiceImpl implements LoanService {
                         1 + monthlyRate,
                         months
                 );
+
 
         return principal
                 * monthlyRate
