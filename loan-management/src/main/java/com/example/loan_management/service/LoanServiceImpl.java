@@ -25,6 +25,10 @@ public class LoanServiceImpl implements LoanService {
     private final WomenRepository womenRepository;
     private final RepaymentRepository repaymentRepository;
     private final ClScheduleRepository clScheduleRepository;
+
+    // ADD THIS
+    private final LoanImageService loanImageService;
+
     private final ModelMapper modelMapper;
 
 
@@ -405,41 +409,27 @@ public class LoanServiceImpl implements LoanService {
     // =========================================================
     // DELETE
     // =========================================================
-
-    @Override
     @Transactional
+    @Override
     public void delete(Long id) {
 
-        Loan loan =
-                loanRepository.findById(id)
-                        .orElseThrow(
-                                () -> new RuntimeException(
-                                        "Loan not found with ID: "
-                                                + id
-                                )
-                        );
+        Loan loan = loanRepository.findById(id)
+                .orElseThrow(() ->
+                        new RuntimeException("Loan not found with ID: " + id)
+                );
 
-
-        // -----------------------------------------------------
-        // Delete CL Schedule
-        // -----------------------------------------------------
-
+        // 1. Delete CL Schedule
         clScheduleRepository.deleteAll(
                 clScheduleRepository.findByLoanId(id)
         );
 
-
-        // -----------------------------------------------------
-        // Delete Repayment
-        // -----------------------------------------------------
-
+        // 2. Delete Repayment
         repaymentRepository.deleteByLoanId(id);
 
+        // 3. Delete Loan Images
+        loanImageService.deleteByLoanId(id);
 
-        // -----------------------------------------------------
-        // Delete Loan
-        // -----------------------------------------------------
-
+        // 4. Finally delete Loan
         loanRepository.delete(loan);
     }
 
