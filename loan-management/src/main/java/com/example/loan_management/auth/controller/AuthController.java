@@ -19,22 +19,25 @@ public class AuthController {
         this.authService = authService;
     }
 
+    // =========================================================
+    // SIGNUP
+    // =========================================================
+
     @PostMapping("/signup")
     public ResponseEntity<User> signup(
             @RequestBody SignupRequest request) {
 
-        User user = new User(
-                request.getName(),
-                request.getEmail(),
-                request.getPassword()
-        );
+        User savedUser = authService.signup(request);
 
-        User savedUser = authService.signup(user);
-
+        // Password response mein nahi bhejna
         savedUser.setPassword(null);
 
         return ResponseEntity.ok(savedUser);
     }
+
+    // =========================================================
+    // LOGIN
+    // =========================================================
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(
@@ -52,6 +55,10 @@ public class AuthController {
                 user.getId(),
                 user.getName(),
                 user.getEmail(),
+                user.getCmrc().getId(),
+                user.getCmrc().getCmrcName(),
+                user.getDistrict(),
+                user.getTaluka(),
                 token
         );
 

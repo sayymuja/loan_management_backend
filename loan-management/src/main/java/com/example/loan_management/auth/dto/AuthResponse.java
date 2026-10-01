@@ -8,7 +8,18 @@ import lombok.Data;
 public class AuthResponse {
 
     private Long id;
+
     private String name;
+
     private String email;
+
+    private Long cmrcId;
+
+    private String cmrcName;
+
+    private String district;
+
+    private String taluka;
+
     private String token;
 }

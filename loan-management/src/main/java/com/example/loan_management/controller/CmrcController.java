@@ -17,13 +17,28 @@ public class CmrcController {
         this.cmrcService = cmrcService;
     }
 
+
     // =====================================================
     // CREATE CMRC
     // =====================================================
 
     @PostMapping
-    public CmrcDto create(@RequestBody CmrcDto cmrc) {
+    public CmrcDto create(
+            @RequestBody CmrcDto cmrc) {
+
         return cmrcService.create(cmrc);
+    }
+
+
+    // =====================================================
+    // ADD BALANCE
+    // =====================================================
+
+    @PostMapping("/add-balance")
+    public CmrcDto addBalance(
+            @RequestBody Double amount) {
+
+        return cmrcService.addBalance(amount);
     }
 
 
@@ -33,6 +48,7 @@ public class CmrcController {
 
     @GetMapping
     public List<CmrcDto> getAll() {
+
         return cmrcService.getAll();
     }
 
@@ -42,7 +58,9 @@ public class CmrcController {
     // =====================================================
 
     @GetMapping("/{id}")
-    public CmrcDto getById(@PathVariable Long id) {
+    public CmrcDto getById(
+            @PathVariable Long id) {
+
         return cmrcService.getById(id);
     }
 
@@ -56,7 +74,10 @@ public class CmrcController {
             @PathVariable Long id,
             @RequestBody CmrcDto cmrc) {
 
-        return cmrcService.update(id, cmrc);
+        return cmrcService.update(
+                id,
+                cmrc
+        );
     }
 
 
@@ -65,7 +86,8 @@ public class CmrcController {
     // =====================================================
 
     @DeleteMapping("/{id}")
-    public String delete(@PathVariable Long id) {
+    public String delete(
+            @PathVariable Long id) {
 
         cmrcService.delete(id);
 

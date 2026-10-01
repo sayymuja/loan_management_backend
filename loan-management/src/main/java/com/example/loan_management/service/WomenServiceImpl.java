@@ -1,9 +1,12 @@
 package com.example.loan_management.service.impl;
 
+import com.example.loan_management.auth.service.CurrentUserService;
 import com.example.loan_management.dto.WomenDto;
 import com.example.loan_management.entity.Group;
 import com.example.loan_management.entity.Women;
+import com.example.loan_management.entity.VoAlf;
 import com.example.loan_management.repository.GroupRepository;
+import com.example.loan_management.repository.VoAlfRepository;
 import com.example.loan_management.repository.WomenRepository;
 import com.example.loan_management.service.WomenService;
 import org.springframework.stereotype.Service;
@@ -16,13 +19,173 @@ public class WomenServiceImpl implements WomenService {
 
     private final WomenRepository womenRepository;
     private final GroupRepository groupRepository;
+    private final VoAlfRepository voAlfRepository;
+    private final CurrentUserService currentUserService;
 
     public WomenServiceImpl(
             WomenRepository womenRepository,
-            GroupRepository groupRepository) {
+            GroupRepository groupRepository,
+            VoAlfRepository voAlfRepository,
+            CurrentUserService currentUserService) {
 
         this.womenRepository = womenRepository;
         this.groupRepository = groupRepository;
+        this.voAlfRepository = voAlfRepository;
+        this.currentUserService = currentUserService;
+    }
+
+
+    // =====================================================
+    // CURRENT CMRC
+    // =====================================================
+
+    private Long getCurrentCmrcId() {
+
+        return currentUserService.getCurrentCmrcId();
+    }
+
+
+    // =====================================================
+    // GET AUTHORIZED GROUP
+    //
+    // Logged-in User
+    //      ↓
+    //     CMRC
+    //      ↓
+    //   VO / ALF
+    //      ↓
+    //    Group
+    // =====================================================
+
+    private Group getAuthorizedGroup(Long groupId) {
+
+        if (groupId == null) {
+
+            throw new RuntimeException(
+                    "Group ID is required"
+            );
+        }
+
+        Group group =
+                groupRepository.findById(groupId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Group not found with ID: "
+                                                + groupId
+                                )
+                        );
+
+        Long currentCmrcId =
+                getCurrentCmrcId();
+
+
+        // -------------------------------------------------
+        // GROUP -> CMRC
+        // -------------------------------------------------
+
+        if (group.getCmrcId() == null ||
+                !currentCmrcId.equals(
+                        group.getCmrcId()
+                )) {
+
+            throw new RuntimeException(
+                    "Access denied for this Group"
+            );
+        }
+
+
+        // -------------------------------------------------
+        // GROUP -> VO / ALF
+        // -------------------------------------------------
+
+        if (group.getVoAlfId() == null) {
+
+            throw new RuntimeException(
+                    "VO / ALF ID not found for this Group"
+            );
+        }
+
+
+        VoAlf voAlf =
+                voAlfRepository.findById(
+                        group.getVoAlfId()
+                ).orElseThrow(() ->
+                        new RuntimeException(
+                                "VO / ALF not found with ID: "
+                                        + group.getVoAlfId()
+                        )
+                );
+
+
+        // -------------------------------------------------
+        // VO / ALF -> CMRC
+        // -------------------------------------------------
+
+        if (voAlf.getCmrc() == null ||
+                !currentCmrcId.equals(
+                        voAlf.getCmrc().getId()
+                )) {
+
+            throw new RuntimeException(
+                    "Access denied for this VO / ALF"
+            );
+        }
+
+        return group;
+    }
+
+
+    // =====================================================
+    // GET AUTHORIZED WOMAN
+    //
+    // Logged-in User
+    //      ↓
+    //     CMRC
+    //      ↓
+    //   VO / ALF
+    //      ↓
+    //    Group
+    //      ↓
+    //    Woman
+    // =====================================================
+
+    private Women getAuthorizedWoman(Long womanId) {
+
+        if (womanId == null) {
+
+            throw new RuntimeException(
+                    "Woman ID is required"
+            );
+        }
+
+        Women women =
+                womenRepository.findById(womanId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Woman not found with ID: "
+                                                + womanId
+                                )
+                        );
+
+
+        if (women.getGroup() == null) {
+
+            throw new RuntimeException(
+                    "Group not found for this woman"
+            );
+        }
+
+
+        // -------------------------------------------------
+        // Verify:
+        // Woman -> Group -> CMRC -> VO / ALF
+        // -------------------------------------------------
+
+        getAuthorizedGroup(
+                women.getGroup().getId()
+        );
+
+        return women;
     }
 
 
@@ -34,19 +197,25 @@ public class WomenServiceImpl implements WomenService {
     public WomenDto create(WomenDto womenDto) {
 
         if (womenDto.getGroupId() == null) {
-            throw new RuntimeException("Group ID is required");
+
+            throw new RuntimeException(
+                    "Group ID is required"
+            );
         }
 
-        Group group = groupRepository.findById(
-                womenDto.getGroupId()
-        ).orElseThrow(() ->
-                new RuntimeException(
-                        "Group not found with ID: "
-                                + womenDto.getGroupId()
-                )
-        );
 
-        Women women = new Women();
+        // -------------------------------------------------
+        // Frontend Group ID must belong to current CMRC
+        // -------------------------------------------------
+
+        Group group =
+                getAuthorizedGroup(
+                        womenDto.getGroupId()
+                );
+
+
+        Women women =
+                new Women();
 
         women.setGroup(group);
 
@@ -70,6 +239,7 @@ public class WomenServiceImpl implements WomenService {
                 womenDto.getStatus()
         );
 
+
         Women savedWomen =
                 womenRepository.save(women);
 
@@ -84,7 +254,18 @@ public class WomenServiceImpl implements WomenService {
     @Override
     public List<WomenDto> getAll() {
 
-        return womenRepository.findAll()
+        Long currentCmrcId =
+                getCurrentCmrcId();
+
+
+        // -------------------------------------------------
+        // IMPORTANT:
+        // Database se directly current CMRC ki women
+        // fetch hongi.
+        // -------------------------------------------------
+
+        return womenRepository
+                .findByGroup_CmrcId(currentCmrcId)
                 .stream()
                 .map(this::convertToDto)
                 .collect(Collectors.toList());
@@ -99,13 +280,7 @@ public class WomenServiceImpl implements WomenService {
     public WomenDto getById(Long id) {
 
         Women women =
-                womenRepository.findById(id)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Woman not found with ID: "
-                                                + id
-                                )
-                        );
+                getAuthorizedWoman(id);
 
         return convertToDto(women);
     }
@@ -118,6 +293,13 @@ public class WomenServiceImpl implements WomenService {
     @Override
     public List<WomenDto> getByGroupId(
             Long groupId) {
+
+        // -------------------------------------------------
+        // First verify Group belongs to current CMRC
+        // -------------------------------------------------
+
+        getAuthorizedGroup(groupId);
+
 
         return womenRepository
                 .findByGroupId(groupId)
@@ -136,42 +318,42 @@ public class WomenServiceImpl implements WomenService {
             Long id,
             WomenDto womenDto) {
 
+        // -------------------------------------------------
+        // Existing woman must belong to current CMRC
+        // -------------------------------------------------
+
         Women women =
-                womenRepository.findById(id)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Woman not found with ID: "
-                                                + id
-                                )
-                        );
+                getAuthorizedWoman(id);
 
 
-        // =================================================
-        // UPDATE GROUP
-        // =================================================
+        // -------------------------------------------------
+        // New Group
+        // -------------------------------------------------
 
         if (womenDto.getGroupId() == null) {
+
             throw new RuntimeException(
                     "Group ID is required"
             );
         }
 
+
+        // -------------------------------------------------
+        // New Group must also belong to current CMRC
+        // -------------------------------------------------
+
         Group group =
-                groupRepository.findById(
+                getAuthorizedGroup(
                         womenDto.getGroupId()
-                ).orElseThrow(() ->
-                        new RuntimeException(
-                                "Group not found with ID: "
-                                        + womenDto.getGroupId()
-                        )
                 );
+
 
         women.setGroup(group);
 
 
-        // =================================================
-        // UPDATE WOMAN DETAILS
-        // =================================================
+        // -------------------------------------------------
+        // Woman Details
+        // -------------------------------------------------
 
         women.setWomanName(
                 womenDto.getWomanName()
@@ -208,14 +390,14 @@ public class WomenServiceImpl implements WomenService {
     @Override
     public void delete(Long id) {
 
-        if (!womenRepository.existsById(id)) {
+        // -------------------------------------------------
+        // Verify ownership before delete
+        // -------------------------------------------------
 
-            throw new RuntimeException(
-                    "Woman not found with ID: " + id
-            );
-        }
+        Women women =
+                getAuthorizedWoman(id);
 
-        womenRepository.deleteById(id);
+        womenRepository.delete(women);
     }
 
 
@@ -226,7 +408,8 @@ public class WomenServiceImpl implements WomenService {
     private WomenDto convertToDto(
             Women women) {
 
-        WomenDto dto = new WomenDto();
+        WomenDto dto =
+                new WomenDto();
 
 
         // =================================================
@@ -268,31 +451,22 @@ public class WomenServiceImpl implements WomenService {
                     women.getGroup();
 
 
-            // Group ID
             dto.setGroupId(
                     group.getId()
             );
 
-
-            // CMRC ID
             dto.setCmrcId(
                     group.getCmrcId()
             );
 
-
-            // VO / ALF ID
             dto.setVoAlfId(
                     group.getVoAlfId()
             );
 
-
-            // Group Name
             dto.setGroupName(
                     group.getGroupName()
             );
 
-
-            // Village
             dto.setVillageName(
                     group.getVillageName()
             );

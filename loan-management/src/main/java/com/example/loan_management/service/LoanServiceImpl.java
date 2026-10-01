@@ -1,13 +1,16 @@
 package com.example.loan_management.service;
 
+import com.example.loan_management.auth.service.CurrentUserService;
 import com.example.loan_management.dto.LoanDto;
 import com.example.loan_management.entity.Group;
 import com.example.loan_management.entity.Loan;
 import com.example.loan_management.entity.Repayment;
+import com.example.loan_management.entity.VoAlf;
 import com.example.loan_management.entity.Women;
 import com.example.loan_management.repository.ClScheduleRepository;
 import com.example.loan_management.repository.LoanRepository;
 import com.example.loan_management.repository.RepaymentRepository;
+import com.example.loan_management.repository.VoAlfRepository;
 import com.example.loan_management.repository.WomenRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -23,13 +26,241 @@ public class LoanServiceImpl implements LoanService {
 
     private final LoanRepository loanRepository;
     private final WomenRepository womenRepository;
+    private final VoAlfRepository voAlfRepository;
     private final RepaymentRepository repaymentRepository;
     private final ClScheduleRepository clScheduleRepository;
 
-    // ADD THIS
     private final LoanImageService loanImageService;
 
     private final ModelMapper modelMapper;
+
+    private final CurrentUserService currentUserService;
+
+
+    // =========================================================
+    // CURRENT CMRC
+    // =========================================================
+
+    private Long getCurrentCmrcId() {
+
+        return currentUserService.getCurrentCmrcId();
+    }
+
+
+    // =========================================================
+    // VALIDATE WOMAN OWNERSHIP
+    //
+    // Logged-in User
+    //      ↓
+    //     CMRC
+    //      ↓
+    //    Group
+    //      ↓
+    //    Woman
+    // =========================================================
+
+    private Women getAuthorizedWoman(Long womanId) {
+
+        if (womanId == null) {
+            throw new RuntimeException(
+                    "Woman ID is required"
+            );
+        }
+
+        Women woman =
+                womenRepository.findById(womanId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Woman not found with ID: "
+                                                + womanId
+                                )
+                        );
+
+        if (woman.getGroup() == null) {
+
+            throw new RuntimeException(
+                    "Group not found for selected woman"
+            );
+        }
+
+        Group group = woman.getGroup();
+
+        Long currentCmrcId =
+                getCurrentCmrcId();
+
+        // -----------------------------------------------------
+        // GROUP MUST BELONG TO CURRENT CMRC
+        // -----------------------------------------------------
+
+        if (group.getCmrcId() == null ||
+                !currentCmrcId.equals(
+                        group.getCmrcId()
+                )) {
+
+            throw new RuntimeException(
+                    "Access denied. Woman does not belong to your CMRC"
+            );
+        }
+
+        // -----------------------------------------------------
+        // GROUP MUST HAVE VO / ALF
+        // -----------------------------------------------------
+
+        if (group.getVoAlfId() == null) {
+
+            throw new RuntimeException(
+                    "VO / ALF ID not found for selected group"
+            );
+        }
+
+        // -----------------------------------------------------
+        // VERIFY VO / ALF ALSO BELONGS TO CURRENT CMRC
+        // -----------------------------------------------------
+
+        getAuthorizedVoAlf(
+                group.getVoAlfId()
+        );
+
+        return woman;
+    }
+
+
+    // =========================================================
+    // VALIDATE VO / ALF OWNERSHIP
+    //
+    // Logged-in User
+    //      ↓
+    //     CMRC
+    //      ↓
+    //   VO / ALF
+    // =========================================================
+
+    private VoAlf getAuthorizedVoAlf(Long voAlfId) {
+
+        if (voAlfId == null) {
+
+            throw new RuntimeException(
+                    "VO / ALF ID is required"
+            );
+        }
+
+        VoAlf voAlf =
+                voAlfRepository.findById(voAlfId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "VO / ALF not found with ID: "
+                                                + voAlfId
+                                )
+                        );
+
+        Long currentCmrcId =
+                getCurrentCmrcId();
+
+        if (voAlf.getCmrc() == null ||
+                !currentCmrcId.equals(
+                        voAlf.getCmrc().getId()
+                )) {
+
+            throw new RuntimeException(
+                    "Access denied for this VO / ALF"
+            );
+        }
+
+        return voAlf;
+    }
+
+
+    // =========================================================
+    // VALIDATE LOAN OWNERSHIP
+    //
+    // Logged-in User
+    //      ↓
+    //     CMRC
+    //      ↓
+    //    Group
+    //      ↓
+    //    Woman
+    //      ↓
+    //    Loan
+    // =========================================================
+
+    private Loan getAuthorizedLoan(Long loanId) {
+
+        Loan loan =
+                loanRepository.findById(loanId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Loan not found with ID: "
+                                                + loanId
+                                )
+                        );
+
+        if (loan.getWoman() == null) {
+
+            throw new RuntimeException(
+                    "Woman not found for this loan"
+            );
+        }
+
+        Women woman = loan.getWoman();
+
+        if (woman.getGroup() == null) {
+
+            throw new RuntimeException(
+                    "Group not found for this loan"
+            );
+        }
+
+        Group group = woman.getGroup();
+
+        Long currentCmrcId =
+                getCurrentCmrcId();
+
+        // -----------------------------------------------------
+        // GROUP -> CMRC VALIDATION
+        // -----------------------------------------------------
+
+        if (group.getCmrcId() == null ||
+                !currentCmrcId.equals(
+                        group.getCmrcId()
+                )) {
+
+            throw new RuntimeException(
+                    "Access denied for this loan"
+            );
+        }
+
+        // -----------------------------------------------------
+        // GROUP -> VO / ALF VALIDATION
+        // -----------------------------------------------------
+
+        if (group.getVoAlfId() == null) {
+
+            throw new RuntimeException(
+                    "VO / ALF not found for this loan"
+            );
+        }
+
+        getAuthorizedVoAlf(
+                group.getVoAlfId()
+        );
+
+        // -----------------------------------------------------
+        // LOAN -> VO / ALF CONSISTENCY
+        // -----------------------------------------------------
+
+        if (loan.getVoAlfId() == null ||
+                !group.getVoAlfId().equals(
+                        loan.getVoAlfId()
+                )) {
+
+            throw new RuntimeException(
+                    "Loan VO / ALF does not match woman's group"
+            );
+        }
+
+        return loan;
+    }
 
 
     // =========================================================
@@ -40,55 +271,27 @@ public class LoanServiceImpl implements LoanService {
     public LoanDto create(LoanDto loanDto) {
 
         // -----------------------------------------------------
-        // Validate Woman
+        // Validate Woman + CMRC + Group + VO/ALF
         // -----------------------------------------------------
 
-        if (loanDto.getWomanId() == null) {
-            throw new RuntimeException("Woman ID is required");
-        }
+        Women woman =
+                getAuthorizedWoman(
+                        loanDto.getWomanId()
+                );
 
-        Women woman = womenRepository.findById(
-                loanDto.getWomanId()
-        ).orElseThrow(
-                () -> new RuntimeException(
-                        "Woman not found with ID: "
-                                + loanDto.getWomanId()
-                )
-        );
-
-
-        // -----------------------------------------------------
-        // Validate Group
-        // -----------------------------------------------------
-
-        if (woman.getGroup() == null) {
-            throw new RuntimeException(
-                    "Group not found for selected woman"
-            );
-        }
-
-        Group group = woman.getGroup();
-
-
-        // -----------------------------------------------------
-        // Validate VO / ALF
-        // -----------------------------------------------------
-
-        if (group.getVoAlfId() == null) {
-            throw new RuntimeException(
-                    "VO / ALF ID not found for selected group"
-            );
-        }
+        Group group =
+                woman.getGroup();
 
 
         // =====================================================
         // MAP DTO -> ENTITY
         // =====================================================
 
-        Loan loan = modelMapper.map(
-                loanDto,
-                Loan.class
-        );
+        Loan loan =
+                modelMapper.map(
+                        loanDto,
+                        Loan.class
+                );
 
 
         // =====================================================
@@ -99,6 +302,7 @@ public class LoanServiceImpl implements LoanService {
         loan.setWoman(woman);
 
         // VO / ALF
+        // NEVER TRUST FRONTEND VO/ALF ID
         loan.setVoAlfId(
                 group.getVoAlfId()
         );
@@ -207,7 +411,11 @@ public class LoanServiceImpl implements LoanService {
     @Override
     public List<LoanDto> getAll() {
 
-        return loanRepository.findAll()
+        Long currentCmrcId =
+                getCurrentCmrcId();
+
+        return loanRepository
+                .findByWoman_Group_CmrcId(currentCmrcId)
                 .stream()
                 .map(this::mapLoanToDto)
                 .toList();
@@ -222,13 +430,7 @@ public class LoanServiceImpl implements LoanService {
     public LoanDto getById(Long id) {
 
         Loan loan =
-                loanRepository.findById(id)
-                        .orElseThrow(
-                                () -> new RuntimeException(
-                                        "Loan not found with ID: "
-                                                + id
-                                )
-                        );
+                getAuthorizedLoan(id);
 
         return mapLoanToDto(loan);
     }
@@ -245,62 +447,24 @@ public class LoanServiceImpl implements LoanService {
     ) {
 
         // -----------------------------------------------------
-        // Find Existing Loan
+        // Existing Loan must belong to current CMRC
         // -----------------------------------------------------
 
         Loan loan =
-                loanRepository.findById(id)
-                        .orElseThrow(
-                                () -> new RuntimeException(
-                                        "Loan not found with ID: "
-                                                + id
-                                )
-                        );
+                getAuthorizedLoan(id);
 
 
         // -----------------------------------------------------
-        // Validate Woman
+        // New Woman must also belong to current CMRC
         // -----------------------------------------------------
-
-        if (loanDto.getWomanId() == null) {
-            throw new RuntimeException(
-                    "Woman ID is required"
-            );
-        }
 
         Women woman =
-                womenRepository.findById(
+                getAuthorizedWoman(
                         loanDto.getWomanId()
-                ).orElseThrow(
-                        () -> new RuntimeException(
-                                "Woman not found with ID: "
-                                        + loanDto.getWomanId()
-                        )
                 );
 
-
-        // -----------------------------------------------------
-        // Validate Group
-        // -----------------------------------------------------
-
-        if (woman.getGroup() == null) {
-            throw new RuntimeException(
-                    "Group not found for selected woman"
-            );
-        }
-
-        Group group = woman.getGroup();
-
-
-        // -----------------------------------------------------
-        // Validate VO / ALF
-        // -----------------------------------------------------
-
-        if (group.getVoAlfId() == null) {
-            throw new RuntimeException(
-                    "VO / ALF ID not found for selected group"
-            );
-        }
+        Group group =
+                woman.getGroup();
 
 
         // =====================================================
@@ -309,6 +473,7 @@ public class LoanServiceImpl implements LoanService {
 
         loan.setWoman(woman);
 
+        // NEVER TRUST FRONTEND VO/ALF ID
         loan.setVoAlfId(
                 group.getVoAlfId()
         );
@@ -388,6 +553,7 @@ public class LoanServiceImpl implements LoanService {
         // =====================================================
 
         if (loanDto.getLoanStatus() != null) {
+
             loan.setLoanStatus(
                     loanDto.getLoanStatus()
             );
@@ -409,25 +575,33 @@ public class LoanServiceImpl implements LoanService {
     // =========================================================
     // DELETE
     // =========================================================
+
     @Transactional
     @Override
     public void delete(Long id) {
 
-        Loan loan = loanRepository.findById(id)
-                .orElseThrow(() ->
-                        new RuntimeException("Loan not found with ID: " + id)
-                );
+        // -----------------------------------------------------
+        // IMPORTANT:
+        // First verify Loan belongs to current CMRC.
+        // -----------------------------------------------------
+
+        Loan loan =
+                getAuthorizedLoan(id);
+
 
         // 1. Delete CL Schedule
         clScheduleRepository.deleteAll(
                 clScheduleRepository.findByLoanId(id)
         );
 
+
         // 2. Delete Repayment
         repaymentRepository.deleteByLoanId(id);
 
+
         // 3. Delete Loan Images
         loanImageService.deleteByLoanId(id);
+
 
         // 4. Finally delete Loan
         loanRepository.delete(loan);
@@ -442,6 +616,12 @@ public class LoanServiceImpl implements LoanService {
     public List<LoanDto> getByWomanId(
             Long womanId
     ) {
+
+        // -----------------------------------------------------
+        // Woman must belong to current CMRC
+        // -----------------------------------------------------
+
+        getAuthorizedWoman(womanId);
 
         return loanRepository
                 .findByWomanId(womanId)
@@ -459,87 +639,137 @@ public class LoanServiceImpl implements LoanService {
 
         LoanDto dto = new LoanDto();
 
-        // =========================================================
+
+        // =====================================================
         // LOAN BASIC DETAILS
-        // =========================================================
+        // =====================================================
 
         dto.setId(loan.getId());
 
-        dto.setSanctionedAmount(loan.getSanctionedAmount());
-        dto.setProcessingFee(loan.getProcessingFee());
-        dto.setLoanAmount(loan.getLoanAmount());
+        dto.setSanctionedAmount(
+                loan.getSanctionedAmount()
+        );
 
-        dto.setLoanPurpose(loan.getLoanPurpose());
-        dto.setLoanGivenDate(loan.getLoanGivenDate());
+        dto.setProcessingFee(
+                loan.getProcessingFee()
+        );
+
+        dto.setLoanAmount(
+                loan.getLoanAmount()
+        );
+
+        dto.setLoanPurpose(
+                loan.getLoanPurpose()
+        );
+
+        dto.setLoanGivenDate(
+                loan.getLoanGivenDate()
+        );
 
         dto.setRepaymentPeriodMonths(
                 loan.getRepaymentPeriodMonths()
         );
 
-        dto.setInterestRate(loan.getInterestRate());
-        dto.setInterestType(loan.getInterestType());
-        dto.setMonthlyEmi(loan.getMonthlyEmi());
-        dto.setLoanStatus(loan.getLoanStatus());
+        dto.setInterestRate(
+                loan.getInterestRate()
+        );
+
+        dto.setInterestType(
+                loan.getInterestType()
+        );
+
+        dto.setMonthlyEmi(
+                loan.getMonthlyEmi()
+        );
+
+        dto.setLoanStatus(
+                loan.getLoanStatus()
+        );
 
 
-
-        // =========================================================
+        // =====================================================
         // VO / ALF ID
-        // =========================================================
+        // =====================================================
 
-        dto.setVoAlfId(loan.getVoAlfId());
+        dto.setVoAlfId(
+                loan.getVoAlfId()
+        );
 
 
-        // =========================================================
+        // =====================================================
         // WOMAN
-        // =========================================================
+        // =====================================================
 
         if (loan.getWoman() != null) {
 
-            Women woman = loan.getWoman();
+            Women woman =
+                    loan.getWoman();
 
-            dto.setWomanId(woman.getId());
-            dto.setWomanName(woman.getWomanName());
+            dto.setWomanId(
+                    woman.getId()
+            );
+
+            dto.setWomanName(
+                    woman.getWomanName()
+            );
 
 
-            // =====================================================
+            // =================================================
             // GROUP
-            // =====================================================
+            // =================================================
 
             if (woman.getGroup() != null) {
 
-                Group group = woman.getGroup();
+                Group group =
+                        woman.getGroup();
 
-                dto.setGroupId(group.getId());
-                dto.setGroupName(group.getGroupName());
-                dto.setVillageName(group.getVillageName());
+                dto.setGroupId(
+                        group.getId()
+                );
 
-                // -------------------------------------------------
+                dto.setGroupName(
+                        group.getGroupName()
+                );
+
+                dto.setVillageName(
+                        group.getVillageName()
+                );
+
+
+                // ---------------------------------------------
                 // CMRC
-                // -------------------------------------------------
+                // ---------------------------------------------
 
-                dto.setCmrcId(group.getCmrcId());
+                dto.setCmrcId(
+                        group.getCmrcId()
+                );
 
-                // -------------------------------------------------
+
+                // ---------------------------------------------
                 // VO / ALF
-                // -------------------------------------------------
+                // ---------------------------------------------
 
-                dto.setVoAlfId(group.getVoAlfId());
+                dto.setVoAlfId(
+                        group.getVoAlfId()
+                );
             }
         }
 
 
-        // =========================================================
+        // =====================================================
         // TOTAL INTEREST RECEIVED
-        // =========================================================
+        // =====================================================
 
         dto.setTotalInterestReceived(
-                calculateTotalInterestReceived(loan.getId())
+                calculateTotalInterestReceived(
+                        loan.getId()
+                )
         );
 
 
         return dto;
     }
+
 
     // =========================================================
     // CALCULATE DISBURSED / LOAN AMOUNT

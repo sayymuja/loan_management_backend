@@ -7,6 +7,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -17,54 +18,104 @@ import java.util.Arrays;
 @EnableWebSecurity
 public class SecurityConfig {
 
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtAuthenticationFilter) {
+
+        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+    }
+
+
+    // =========================================================
+    // SECURITY FILTER CHAIN
+    // =========================================================
+
     @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http) throws Exception {
 
         http
-                // Disable CSRF because Angular REST API
+
+                // -------------------------------------------------
+                // CSRF
+                // -------------------------------------------------
                 .csrf(csrf -> csrf.disable())
 
-                // Enable CORS
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
 
-                // Authorization
+                // -------------------------------------------------
+                // CORS
+                // -------------------------------------------------
+                .cors(cors ->
+                        cors.configurationSource(
+                                corsConfigurationSource()
+                        )
+                )
+
+
+                // -------------------------------------------------
+                // AUTHORIZATION
+                // -------------------------------------------------
                 .authorizeHttpRequests(auth -> auth
 
-                        // Auth APIs
+                        // Signup & Login are public
                         .requestMatchers(
                                 "/api/auth/signup",
                                 "/api/auth/login"
                         ).permitAll()
 
-                        // Allow all APIs for now
-                        .anyRequest().permitAll()
+                        // Browser preflight
+                        .requestMatchers(
+                                org.springframework.http.HttpMethod.OPTIONS,
+                                "/**"
+                        ).permitAll()
+
+                        // Every other API requires login
+                        .anyRequest().authenticated()
                 )
 
-                // Disable default login page
+
+                // -------------------------------------------------
+                // JWT FILTER
+                // -------------------------------------------------
+                .addFilterBefore(
+                        jwtAuthenticationFilter,
+                        UsernamePasswordAuthenticationFilter.class
+                )
+
+
+                // -------------------------------------------------
+                // DISABLE DEFAULT LOGIN
+                // -------------------------------------------------
                 .formLogin(form -> form.disable())
 
-                // Disable HTTP Basic
+
+                // -------------------------------------------------
+                // DISABLE HTTP BASIC
+                // -------------------------------------------------
                 .httpBasic(basic -> basic.disable());
+
 
         return http.build();
     }
 
 
-    /**
-     * CORS Configuration
-     */
+    // =========================================================
+    // CORS CONFIGURATION
+    // =========================================================
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
 
-        CorsConfiguration configuration = new CorsConfiguration();
+        CorsConfiguration configuration =
+                new CorsConfiguration();
 
-        // Angular frontend
         configuration.setAllowedOrigins(
-                Arrays.asList("http://localhost:4200")
+                Arrays.asList(
+                        "http://localhost:4200"
+                )
         );
 
-        // HTTP methods
         configuration.setAllowedMethods(
                 Arrays.asList(
                         "GET",
@@ -76,15 +127,12 @@ public class SecurityConfig {
                 )
         );
 
-        // Request headers
         configuration.setAllowedHeaders(
                 Arrays.asList("*")
         );
 
-        // Allow cookies / Authorization headers if needed later
         configuration.setAllowCredentials(true);
 
-        // Expose response headers if required
         configuration.setExposedHeaders(
                 Arrays.asList("Authorization")
         );
@@ -101,11 +149,13 @@ public class SecurityConfig {
     }
 
 
-    /**
-     * Password Encoder
-     */
+    // =========================================================
+    // PASSWORD ENCODER
+    // =========================================================
+
     @Bean
     public PasswordEncoder passwordEncoder() {
+
         return new BCryptPasswordEncoder();
     }
 }

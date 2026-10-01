@@ -12,4 +12,22 @@ public interface LoanRepository extends JpaRepository<Loan, Long> {
     // =========================================================
 
     List<Loan> findByWomanId(Long womanId);
+
+
+    // =========================================================
+    // GET LOANS BY CMRC
+    // Loan -> Woman -> Group -> cmrcId
+    // =========================================================
+
+    List<Loan> findByWoman_Group_CmrcId(Long cmrcId);
+
+
+    // =========================================================
+    // CHECK LOAN BELONGS TO CURRENT CMRC
+    // =========================================================
+
+    boolean existsByIdAndWoman_Group_CmrcId(
+            Long loanId,
+            Long cmrcId
+    );
 }

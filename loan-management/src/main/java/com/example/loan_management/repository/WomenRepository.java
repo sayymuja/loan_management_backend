@@ -11,4 +11,16 @@ public interface WomenRepository extends JpaRepository<Women, Long> {
      * Get all women by Group ID
      */
     List<Women> findByGroupId(Long groupId);
+
+
+    /*
+     * Get all women by CMRC
+     *
+     * Women
+     *   ↓
+     * Group
+     *   ↓
+     * cmrcId
+     */
+    List<Women> findByGroup_CmrcId(Long cmrcId);
 }

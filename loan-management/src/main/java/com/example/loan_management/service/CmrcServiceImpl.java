@@ -1,8 +1,10 @@
-        package com.example.loan_management.service;
+package com.example.loan_management.service.impl;
 
+import com.example.loan_management.auth.service.CurrentUserService;
 import com.example.loan_management.dto.CmrcDto;
 import com.example.loan_management.entity.Cmrc;
 import com.example.loan_management.repository.CmrcRepository;
+import com.example.loan_management.service.CmrcService;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
@@ -15,74 +17,153 @@ public class CmrcServiceImpl implements CmrcService {
 
     private final CmrcRepository cmrcRepository;
     private final ModelMapper modelMapper;
+    private final CurrentUserService currentUserService;
+
 
     // =========================================================
-    // CREATE CMRC
+    // CREATE
     // =========================================================
 
     @Override
     public CmrcDto create(CmrcDto cmrcDto) {
 
-        Cmrc cmrc = modelMapper.map(cmrcDto, Cmrc.class);
-
-        Cmrc savedCmrc = cmrcRepository.save(cmrc);
-
-        return modelMapper.map(savedCmrc, CmrcDto.class);
+        /*
+         * Logged-in users cannot create a new CMRC.
+         * They can only manage their assigned CMRC.
+         */
+        throw new RuntimeException(
+                "CMRC creation is not allowed for logged-in users"
+        );
     }
 
+
     // =========================================================
-    // GET ALL CMRC
+    // ADD BALANCE
+    // =========================================================
+
+    @Override
+    public CmrcDto addBalance(Double amount) {
+
+        if (amount == null || amount <= 0) {
+
+            throw new RuntimeException(
+                    "Balance amount must be greater than 0"
+            );
+        }
+
+        /*
+         * Get the CMRC assigned to the logged-in user.
+         */
+        Cmrc cmrc = getCurrentCmrc();
+
+
+        /*
+         * Existing balance.
+         */
+        Double existingBalance =
+                cmrc.getTotalFund() == null
+                        ? 0.0
+                        : cmrc.getTotalFund();
+
+
+        /*
+         * Add new balance.
+         */
+        Double updatedBalance =
+                existingBalance + amount;
+
+
+        /*
+         * Update SAME CMRC row.
+         */
+        cmrc.setTotalFund(updatedBalance);
+
+
+        /*
+         * Save.
+         */
+        Cmrc savedCmrc =
+                cmrcRepository.save(cmrc);
+
+
+        /*
+         * Force database synchronization.
+         */
+        cmrcRepository.flush();
+
+
+        return modelMapper.map(
+                savedCmrc,
+                CmrcDto.class
+        );
+    }
+
+
+    // =========================================================
+    // GET ALL
     // =========================================================
 
     @Override
     public List<CmrcDto> getAll() {
 
-        return cmrcRepository.findAll()
-                .stream()
-                .map(cmrc ->
-                        modelMapper.map(cmrc, CmrcDto.class)
+        /*
+         * Only return the CMRC assigned
+         * to the logged-in user.
+         */
+        Cmrc cmrc = getCurrentCmrc();
+
+        return List.of(
+                modelMapper.map(
+                        cmrc,
+                        CmrcDto.class
                 )
-                .toList();
+        );
     }
 
+
     // =========================================================
-    // GET CMRC BY ID
+    // GET BY ID
     // =========================================================
 
     @Override
     public CmrcDto getById(Long id) {
 
-        Cmrc cmrc = cmrcRepository.findById(id)
-                .orElseThrow(() ->
-                        new RuntimeException(
-                                "CMRC not found with id: " + id
-                        )
-                );
+        /*
+         * Make sure the requested CMRC belongs
+         * to the logged-in user.
+         */
+        Cmrc cmrc =
+                getAuthorizedCmrc(id);
 
-        return modelMapper.map(cmrc, CmrcDto.class);
+        return modelMapper.map(
+                cmrc,
+                CmrcDto.class
+        );
     }
 
+
     // =========================================================
-    // UPDATE CMRC
+    // UPDATE
     // =========================================================
 
     @Override
-    public CmrcDto update(Long id, CmrcDto cmrcDto) {
+    public CmrcDto update(
+            Long id,
+            CmrcDto cmrcDto) {
 
-        Cmrc cmrc = cmrcRepository.findById(id)
-                .orElseThrow(() ->
-                        new RuntimeException(
-                                "CMRC not found with id: " + id
-                        )
-                );
+        /*
+         * Get existing CMRC.
+         *
+         * This also checks that the logged-in user
+         * is authorized to update this CMRC.
+         */
+        Cmrc cmrc =
+                getAuthorizedCmrc(id);
 
-        // ==============================
-        // BASIC INFORMATION
-        // ==============================
 
-        cmrc.setSerialNo(
-                cmrcDto.getSerialNo()
-        );
+        // -----------------------------------------------------
+        // Update CMRC basic information
+        // -----------------------------------------------------
 
         cmrc.setCmrcName(
                 cmrcDto.getCmrcName()
@@ -96,10 +177,6 @@ public class CmrcServiceImpl implements CmrcService {
                 cmrcDto.getAccountOpeningDate()
         );
 
-        // ==============================
-        // LOCATION
-        // ==============================
-
         cmrc.setDistrict(
                 cmrcDto.getDistrict()
         );
@@ -108,96 +185,50 @@ public class CmrcServiceImpl implements CmrcService {
                 cmrcDto.getTaluka()
         );
 
-        // ==============================
-        // STATUS
-        // ==============================
-
         cmrc.setStatus(
                 cmrcDto.getStatus()
         );
 
-        // ==============================
-        // CMRC AMOUNT
-        // ==============================
 
-        cmrc.setTotalFund(
-                cmrcDto.getTotalFund()
-        );
+        // -----------------------------------------------------
+        // IMPORTANT:
+        // Update totalFund in the SAME existing row.
+        //
+        // Example:
+        // Existing balance = 20000
+        // Add balance      = 20000
+        // Angular sends     = 40000
+        //
+        // DB result:
+        // total_fund = 40000
+        // -----------------------------------------------------
 
-        cmrc.setServiceFeeReceived(
-                cmrcDto.getServiceFeeReceived()
-        );
+        if (cmrcDto.getTotalFund() != null) {
 
-        cmrc.setRecordsPrinted(
-                cmrcDto.getRecordsPrinted()
-        );
+            cmrc.setTotalFund(
+                    cmrcDto.getTotalFund()
+            );
+        }
 
-        cmrc.setPrintedRecordsAmount(
-                cmrcDto.getPrintedRecordsAmount()
-        );
 
-        cmrc.setRecordsDistributedVillages(
-                cmrcDto.getRecordsDistributedVillages()
-        );
-
-        cmrc.setExpectedRecordAmount(
-                cmrcDto.getExpectedRecordAmount()
-        );
-
-        cmrc.setActualRecordAmountReceived(
-                cmrcDto.getActualRecordAmountReceived()
-        );
-
-        // ==============================
-        // TEZSHREE FUND RECEIVED
-        // ==============================
-
-        cmrc.setTezshreeFundReceivedUltraPoor(
-                cmrcDto.getTezshreeFundReceivedUltraPoor()
-        );
-
-        cmrc.setTezshreeFundReceivedDebtTrappedWomen(
-                cmrcDto.getTezshreeFundReceivedDebtTrappedWomen()
-        );
-
-        cmrc.setTezshreeFundReceivedTotal(
-                cmrcDto.getTezshreeFundReceivedTotal()
-        );
-
-        // ==============================
-        // FUND DISTRIBUTION
-        // ==============================
-
-        cmrc.setFundDistributedVillageCount(
-                cmrcDto.getFundDistributedVillageCount()
-        );
-
-        cmrc.setDistributedUltraPoorWomenCount(
-                cmrcDto.getDistributedUltraPoorWomenCount()
-        );
-
-        cmrc.setDistributedUltraPoorFund(
-                cmrcDto.getDistributedUltraPoorFund()
-        );
-
-        cmrc.setDistributedDebtTrappedWomenCount(
-                cmrcDto.getDistributedDebtTrappedWomenCount()
-        );
-
-        cmrc.setDistributedDebtTrappedFund(
-                cmrcDto.getDistributedDebtTrappedFund()
-        );
-
-        cmrc.setDistributedTotalFund(
-                cmrcDto.getDistributedTotalFund()
-        );
-
-        // ==============================
-        // SAVE
-        // ==============================
+        // -----------------------------------------------------
+        // Save existing CMRC
+        // -----------------------------------------------------
 
         Cmrc updatedCmrc =
                 cmrcRepository.save(cmrc);
+
+
+        // -----------------------------------------------------
+        // Force Hibernate to synchronize with DB
+        // -----------------------------------------------------
+
+        cmrcRepository.flush();
+
+
+        // -----------------------------------------------------
+        // Return updated CMRC
+        // -----------------------------------------------------
 
         return modelMapper.map(
                 updatedCmrc,
@@ -205,20 +236,87 @@ public class CmrcServiceImpl implements CmrcService {
         );
     }
 
+
     // =========================================================
-    // DELETE CMRC
+    // DELETE
     // =========================================================
 
     @Override
     public void delete(Long id) {
 
-        Cmrc cmrc = cmrcRepository.findById(id)
-                .orElseThrow(() ->
-                        new RuntimeException(
-                                "CMRC not found with id: " + id
-                        )
-                );
+        /*
+         * Only the logged-in user's CMRC can be deleted.
+         */
+        Cmrc cmrc =
+                getAuthorizedCmrc(id);
 
         cmrcRepository.delete(cmrc);
+
+        cmrcRepository.flush();
+    }
+
+
+    // =========================================================
+    // GET CURRENT USER CMRC
+    // =========================================================
+
+    private Cmrc getCurrentCmrc() {
+
+        Long cmrcId =
+                currentUserService.getCurrentCmrcId();
+
+
+        if (cmrcId == null) {
+
+            throw new RuntimeException(
+                    "No CMRC assigned to logged-in user"
+            );
+        }
+
+
+        return cmrcRepository.findById(cmrcId)
+                .orElseThrow(() ->
+                        new RuntimeException(
+                                "CMRC not found for logged-in user"
+                        )
+                );
+    }
+
+
+    // =========================================================
+    // AUTHORIZED CMRC
+    // =========================================================
+
+    private Cmrc getAuthorizedCmrc(Long id) {
+
+        Long currentCmrcId =
+                currentUserService.getCurrentCmrcId();
+
+
+        if (currentCmrcId == null) {
+
+            throw new RuntimeException(
+                    "No CMRC assigned to logged-in user"
+            );
+        }
+
+
+        /*
+         * Prevent user from accessing another CMRC.
+         */
+        if (!currentCmrcId.equals(id)) {
+
+            throw new RuntimeException(
+                    "You are not authorized to access this CMRC"
+            );
+        }
+
+
+        return cmrcRepository.findById(id)
+                .orElseThrow(() ->
+                        new RuntimeException(
+                                "CMRC not found"
+                        )
+                );
     }
 }

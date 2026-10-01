@@ -1,5 +1,6 @@
 package com.example.loan_management.service;
 
+import com.example.loan_management.auth.service.CurrentUserService;
 import com.example.loan_management.dto.VoAlfDto;
 import com.example.loan_management.entity.Cmrc;
 import com.example.loan_management.entity.VoAlf;
@@ -18,31 +19,91 @@ public class VoAlfServiceImpl implements VoAlfService {
     private final VoAlfRepository voAlfRepository;
     private final CmrcRepository cmrcRepository;
     private final ModelMapper modelMapper;
+    private final CurrentUserService currentUserService;
 
 
-    // ==========================================
+    // =========================================================
+    // CURRENT LOGGED-IN USER CMRC
+    // =========================================================
+
+    private Cmrc getCurrentCmrc() {
+
+        Long currentCmrcId =
+                currentUserService.getCurrentCmrcId();
+
+        return cmrcRepository.findById(currentCmrcId)
+                .orElseThrow(() ->
+                        new RuntimeException(
+                                "CMRC not found for logged-in user"
+                        )
+                );
+    }
+
+
+    // =========================================================
+    // CHECK VO/ALF BELONGS TO CURRENT CMRC
+    // =========================================================
+
+    private VoAlf getAuthorizedVoAlf(Long id) {
+
+        VoAlf voAlf =
+                voAlfRepository.findById(id)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "VO/ALF not found"
+                                )
+                        );
+
+        Long currentCmrcId =
+                currentUserService.getCurrentCmrcId();
+
+        if (voAlf.getCmrc() == null ||
+                !currentCmrcId.equals(
+                        voAlf.getCmrc().getId()
+                )) {
+
+            throw new RuntimeException(
+                    "Access denied for this VO/ALF"
+            );
+        }
+
+        return voAlf;
+    }
+
+
+    // =========================================================
     // CREATE
-    // ==========================================
+    // =========================================================
 
     @Override
     public VoAlfDto create(VoAlfDto voAlfDto) {
 
-        Cmrc cmrc = cmrcRepository.findById(voAlfDto.getCmrcId())
-                .orElseThrow(() -> new RuntimeException("CMRC not found"));
+        /*
+         * NEVER trust cmrcId coming from frontend.
+         *
+         * The logged-in user's CMRC is automatically used.
+         */
 
-        VoAlf voAlf = modelMapper.map(voAlfDto, VoAlf.class);
+        Cmrc currentCmrc = getCurrentCmrc();
 
-        // Set CMRC relationship
-        voAlf.setCmrc(cmrc);
+        VoAlf voAlf =
+                modelMapper.map(
+                        voAlfDto,
+                        VoAlf.class
+                );
 
-        // createdDate automatically set by @PrePersist
-        VoAlf savedVoAlf = voAlfRepository.save(voAlf);
+        // Force logged-in user's CMRC
+        voAlf.setCmrc(currentCmrc);
 
-        // Convert Entity -> DTO
+        VoAlf savedVoAlf =
+                voAlfRepository.save(voAlf);
+
         VoAlfDto response =
-                modelMapper.map(savedVoAlf, VoAlfDto.class);
+                modelMapper.map(
+                        savedVoAlf,
+                        VoAlfDto.class
+                );
 
-        // Set CMRC ID
         response.setCmrcId(
                 savedVoAlf.getCmrc().getId()
         );
@@ -51,14 +112,18 @@ public class VoAlfServiceImpl implements VoAlfService {
     }
 
 
-    // ==========================================
+    // =========================================================
     // GET ALL
-    // ==========================================
+    // =========================================================
 
     @Override
     public List<VoAlfDto> getAll() {
 
-        return voAlfRepository.findAll()
+        Long currentCmrcId =
+                currentUserService.getCurrentCmrcId();
+
+        return voAlfRepository
+                .findByCmrcId(currentCmrcId)
                 .stream()
                 .map(voAlf -> {
 
@@ -79,20 +144,15 @@ public class VoAlfServiceImpl implements VoAlfService {
     }
 
 
-    // ==========================================
+    // =========================================================
     // GET BY ID
-    // ==========================================
+    // =========================================================
 
     @Override
     public VoAlfDto getById(Long id) {
 
         VoAlf voAlf =
-                voAlfRepository.findById(id)
-                        .orElseThrow(
-                                () -> new RuntimeException(
-                                        "VO/ALF not found"
-                                )
-                        );
+                getAuthorizedVoAlf(id);
 
         VoAlfDto dto =
                 modelMapper.map(
@@ -108,17 +168,29 @@ public class VoAlfServiceImpl implements VoAlfService {
     }
 
 
-    // ==========================================
+    // =========================================================
     // GET BY CMRC ID
-    // ==========================================
+    // =========================================================
 
     @Override
     public List<VoAlfDto> getByCmrcId(Long cmrcId) {
 
-        List<VoAlf> voAlfList =
-                voAlfRepository.findByCmrcId(cmrcId);
+        Long currentCmrcId =
+                currentUserService.getCurrentCmrcId();
 
-        return voAlfList
+        /*
+         * Do not allow frontend to request another CMRC.
+         */
+
+        if (!currentCmrcId.equals(cmrcId)) {
+
+            throw new RuntimeException(
+                    "Access denied for this CMRC"
+            );
+        }
+
+        return voAlfRepository
+                .findByCmrcId(currentCmrcId)
                 .stream()
                 .map(voAlf -> {
 
@@ -139,9 +211,9 @@ public class VoAlfServiceImpl implements VoAlfService {
     }
 
 
-    // ==========================================
+    // =========================================================
     // UPDATE
-    // ==========================================
+    // =========================================================
 
     @Override
     public VoAlfDto update(
@@ -149,30 +221,30 @@ public class VoAlfServiceImpl implements VoAlfService {
             VoAlfDto voAlfDto
     ) {
 
+        /*
+         * First verify that this VO/ALF belongs
+         * to logged-in user's CMRC.
+         */
+
         VoAlf voAlf =
-                voAlfRepository.findById(id)
-                        .orElseThrow(
-                                () -> new RuntimeException(
-                                        "VO/ALF not found"
-                                )
-                        );
+                getAuthorizedVoAlf(id);
 
-        Cmrc cmrc =
-                cmrcRepository.findById(
-                                voAlfDto.getCmrcId()
-                        )
-                        .orElseThrow(
-                                () -> new RuntimeException(
-                                        "CMRC not found"
-                                )
-                        );
+        Cmrc currentCmrc =
+                getCurrentCmrc();
+
+        /*
+         * IMPORTANT:
+         *
+         * Do NOT allow frontend to move VO/ALF
+         * to another CMRC.
+         */
+
+        voAlf.setCmrc(currentCmrc);
 
 
-        // ==========================================
-        // Update editable fields
-        // ==========================================
-
-        voAlf.setCmrc(cmrc);
+        // =====================================================
+        // UPDATE EDITABLE FIELDS
+        // =====================================================
 
         voAlf.setVillageName(
                 voAlfDto.getVillageName()
@@ -191,22 +263,13 @@ public class VoAlfServiceImpl implements VoAlfService {
         );
 
 
-        // ==========================================
-        // IMPORTANT
-        // ==========================================
-        // serialNo removed
-        // createdDate NOT updated
-        //
-        // createdDate should remain the
-        // original creation date.
-        // ==========================================
-
+        // =====================================================
+        // SAVE
+        // =====================================================
 
         VoAlf updated =
                 voAlfRepository.save(voAlf);
 
-
-        // Entity -> DTO
 
         VoAlfDto response =
                 modelMapper.map(
@@ -222,20 +285,20 @@ public class VoAlfServiceImpl implements VoAlfService {
     }
 
 
-    // ==========================================
+    // =========================================================
     // DELETE
-    // ==========================================
+    // =========================================================
 
     @Override
     public void delete(Long id) {
 
+        /*
+         * Only delete VO/ALF belonging to
+         * logged-in user's CMRC.
+         */
+
         VoAlf voAlf =
-                voAlfRepository.findById(id)
-                        .orElseThrow(
-                                () -> new RuntimeException(
-                                        "VO/ALF not found"
-                                )
-                        );
+                getAuthorizedVoAlf(id);
 
         voAlfRepository.delete(voAlf);
     }
