@@ -1,12 +1,15 @@
-package com.example.loan_management.auth.security;
+        package com.example.loan_management.auth.security;
 
 import com.example.loan_management.auth.entity.User;
 import com.example.loan_management.auth.repository.UserRepository;
+
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -30,59 +33,48 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             FilterChain filterChain)
             throws ServletException, IOException {
 
-        final String authHeader =
-                request.getHeader("Authorization");
+        String authHeader = request.getHeader("Authorization");
 
-        String email = null;
-        String token = null;
-
-        // =========================================================
-        // CHECK JWT TOKEN
-        // =========================================================
-
-        if (authHeader != null &&
-                authHeader.startsWith("Bearer ")) {
-
-            token = authHeader.substring(7);
-
-            try {
-                email = jwtService.extractEmail(token);
-            } catch (Exception e) {
-                email = null;
-            }
+        // Continue without authentication if no Bearer token is supplied.
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            filterChain.doFilter(request, response);
+            return;
         }
 
-        // =========================================================
-        // AUTHENTICATE USER
-        // =========================================================
+        String token = authHeader.substring(7);
 
-        if (email != null &&
-                SecurityContextHolder
-                        .getContext()
-                        .getAuthentication() == null) {
+        try {
+            String email = jwtService.extractEmail(token);
 
-            User user = userRepository
-                    .findByEmail(email)
-                    .orElse(null);
+            if (email != null
+                    && SecurityContextHolder.getContext()
+                    .getAuthentication() == null
+                    && jwtService.isTokenValid(token)) {
 
-            if (user != null &&
-                    jwtService.isTokenValid(token)) {
+                User user = userRepository.findByEmail(email)
+                        .orElse(null);
 
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(
-                                email,
-                                null,
-                                Collections.singletonList(
-                                        new SimpleGrantedAuthority(
-                                                "ROLE_USER"
-                                        )
-                                )
-                        );
+                if (user != null) {
 
-                SecurityContextHolder
-                        .getContext()
-                        .setAuthentication(authentication);
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(
+                                    email,
+                                    null,
+                                    Collections.singletonList(
+                                            new SimpleGrantedAuthority(
+                                                    "ROLE_USER"
+                                            )
+                                    )
+                            );
+
+                    SecurityContextHolder.getContext()
+                            .setAuthentication(authentication);
+                }
             }
+
+        } catch (Exception e) {
+            // Do not authenticate requests with an invalid token.
+            SecurityContextHolder.clearContext();
         }
 
         filterChain.doFilter(request, response);

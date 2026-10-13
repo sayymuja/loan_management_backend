@@ -1,0 +1,122 @@
+
+package com.example.loan_management.service;
+
+import com.example.loan_management.auth.service.CurrentUserService;
+import com.example.loan_management.dto.AiChatResponse;
+import com.example.loan_management.dto.AiChatRequest;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.Map;
+
+@Service
+public class AiService {
+
+    private final CurrentUserService currentUserService;
+    private final ObjectMapper objectMapper;
+    private final HttpClient httpClient;
+
+    public AiService(
+            CurrentUserService currentUserService,
+            ObjectMapper objectMapper) {
+
+        this.currentUserService = currentUserService;
+        this.objectMapper = objectMapper;
+
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
+    }
+
+    public AiChatResponse chat(String question) {
+
+        // Verify the authenticated user and their assigned CMRC.
+        String cmrcName = currentUserService.getCurrentCmrcName();
+
+        String prompt = """
+                You are the local AI assistant for a Loan Management System.
+
+                The logged-in user's CMRC is: %s
+
+                The user has asked: %s
+
+                Important rules:
+                1. Reply clearly and helpfully.
+                2. Do not invent loan amounts, balances, repayments,
+                   interest figures, or other financial records.
+                3. You do not have access to live database records yet.
+                4. If asked for actual financial figures, explain that
+                   database integration is not enabled yet.
+                5. Do not claim that you have performed any transaction.
+                6. You may explain loan management concepts.
+                """.formatted(cmrcName, question);
+
+        try {
+            Map<String, Object> payload = Map.of(
+                    "model", "qwen2.5:3b",
+                    "messages", java.util.List.of(
+                            Map.of(
+                                    "role", "user",
+                                    "content", prompt
+                            )
+                    ),
+                    "stream", false
+            );
+
+            String requestBody =
+                    objectMapper.writeValueAsString(payload);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(
+                            "http://localhost:11434/api/chat"))
+                    .timeout(Duration.ofSeconds(120))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(
+                    request,
+                    HttpResponse.BodyHandlers.ofString()
+            );
+
+            if (response.statusCode() != 200) {
+                throw new IllegalStateException(
+                        "Ollama returned HTTP status "
+                                + response.statusCode()
+                );
+            }
+
+            JsonNode root = objectMapper.readTree(response.body());
+            String answer = root.path("message")
+                    .path("content")
+                    .asText("");
+
+            if (answer.isBlank()) {
+                throw new IllegalStateException(
+                        "Ollama returned an empty answer"
+                );
+            }
+
+            return new AiChatResponse(answer, cmrcName);
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(
+                    "AI request was interrupted", e
+            );
+        } catch (IOException e) {
+            throw new IllegalStateException(
+                    "Cannot connect to local Ollama. "
+                            + "Check that Ollama is running.", e
+            );
+        }
+    }
+}

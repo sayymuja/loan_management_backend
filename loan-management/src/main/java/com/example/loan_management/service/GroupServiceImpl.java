@@ -2,8 +2,10 @@ package com.example.loan_management.service.impl;
 
 import com.example.loan_management.auth.service.CurrentUserService;
 import com.example.loan_management.dto.GroupDto;
+import com.example.loan_management.entity.Cmrc;
 import com.example.loan_management.entity.Group;
 import com.example.loan_management.entity.VoAlf;
+import com.example.loan_management.repository.CmrcRepository;
 import com.example.loan_management.repository.GroupRepository;
 import com.example.loan_management.repository.VoAlfRepository;
 import com.example.loan_management.service.GroupService;
@@ -16,65 +18,52 @@ import java.util.stream.Collectors;
 public class GroupServiceImpl implements GroupService {
 
     private final GroupRepository groupRepository;
+    private final CmrcRepository cmrcRepository;
     private final VoAlfRepository voAlfRepository;
     private final CurrentUserService currentUserService;
 
     public GroupServiceImpl(
             GroupRepository groupRepository,
+            CmrcRepository cmrcRepository,
             VoAlfRepository voAlfRepository,
             CurrentUserService currentUserService) {
 
         this.groupRepository = groupRepository;
+        this.cmrcRepository = cmrcRepository;
         this.voAlfRepository = voAlfRepository;
         this.currentUserService = currentUserService;
     }
-
 
     // =====================================================
     // CURRENT CMRC
     // =====================================================
 
     private Long getCurrentCmrcId() {
-
         return currentUserService.getCurrentCmrcId();
     }
 
-
     // =====================================================
     // GET AUTHORIZED VO / ALF
-    //
-    // Logged-in User
-    //      ↓
-    //     CMRC
-    //      ↓
-    //   VO / ALF
     // =====================================================
 
     private VoAlf getAuthorizedVoAlf(Long voAlfId) {
 
         if (voAlfId == null) {
-
-            throw new RuntimeException(
-                    "VO / ALF ID is required"
-            );
+            throw new RuntimeException("VO / ALF ID is required");
         }
 
         VoAlf voAlf =
                 voAlfRepository.findById(voAlfId)
                         .orElseThrow(() ->
                                 new RuntimeException(
-                                        "VO / ALF not found with ID: "
-                                                + voAlfId
+                                        "VO / ALF not found with ID: " + voAlfId
                                 )
                         );
 
-        Long currentCmrcId =
-                getCurrentCmrcId();
+        Long currentCmrcId = getCurrentCmrcId();
 
         if (voAlf.getCmrc() == null ||
-                !currentCmrcId.equals(
-                        voAlf.getCmrc().getId()
-                )) {
+                !currentCmrcId.equals(voAlf.getCmrc().getId())) {
 
             throw new RuntimeException(
                     "Access denied for this VO / ALF"
@@ -84,17 +73,8 @@ public class GroupServiceImpl implements GroupService {
         return voAlf;
     }
 
-
     // =====================================================
     // GET AUTHORIZED GROUP
-    //
-    // Logged-in User
-    //      ↓
-    //     CMRC
-    //      ↓
-    //   VO / ALF
-    //      ↓
-    //    Group
     // =====================================================
 
     private Group getAuthorizedGroup(Long groupId) {
@@ -103,47 +83,33 @@ public class GroupServiceImpl implements GroupService {
                 groupRepository.findById(groupId)
                         .orElseThrow(() ->
                                 new RuntimeException(
-                                        "Group not found with ID: "
-                                                + groupId
+                                        "Group not found with ID: " + groupId
                                 )
                         );
 
-        Long currentCmrcId =
-                getCurrentCmrcId();
+        Long currentCmrcId = getCurrentCmrcId();
 
-        // -------------------------------------------------
         // GROUP -> CMRC
-        // -------------------------------------------------
-
         if (group.getCmrcId() == null ||
-                !currentCmrcId.equals(
-                        group.getCmrcId()
-                )) {
+                !currentCmrcId.equals(group.getCmrcId())) {
 
             throw new RuntimeException(
                     "Access denied for this Group"
             );
         }
 
-        // -------------------------------------------------
         // GROUP -> VO / ALF
-        // -------------------------------------------------
-
         if (group.getVoAlfId() == null) {
-
             throw new RuntimeException(
                     "VO / ALF ID not found for this Group"
             );
         }
 
         // Verify VO/ALF also belongs to current CMRC
-        getAuthorizedVoAlf(
-                group.getVoAlfId()
-        );
+        getAuthorizedVoAlf(group.getVoAlfId());
 
         return group;
     }
-
 
     // =====================================================
     // CREATE GROUP
@@ -153,74 +119,34 @@ public class GroupServiceImpl implements GroupService {
     public GroupDto create(GroupDto groupDto) {
 
         if (groupDto.getVoAlfId() == null) {
-
             throw new RuntimeException(
                     "VO / ALF ID is required"
             );
         }
 
-        // -------------------------------------------------
-        // IMPORTANT:
-        // Never trust cmrcId from frontend.
-        // Verify VO/ALF belongs to logged-in user's CMRC.
-        // -------------------------------------------------
+        // Verify VO/ALF belongs to logged-in user's CMRC
+        getAuthorizedVoAlf(groupDto.getVoAlfId());
 
-        getAuthorizedVoAlf(
-                groupDto.getVoAlfId()
-        );
+        Long currentCmrcId = getCurrentCmrcId();
 
-        Long currentCmrcId =
-                getCurrentCmrcId();
+        Group group = new Group();
 
-
-        Group group =
-                new Group();
-
-
-        // -------------------------------------------------
         // CMRC
-        // -------------------------------------------------
-        // Do NOT use groupDto.getCmrcId()
-        // -------------------------------------------------
+        group.setCmrcId(currentCmrcId);
 
-        group.setCmrcId(
-                currentCmrcId
-        );
-
-
-        // -------------------------------------------------
         // VO / ALF
-        // -------------------------------------------------
+        group.setVoAlfId(groupDto.getVoAlfId());
 
-        group.setVoAlfId(
-                groupDto.getVoAlfId()
-        );
-
-
-        // -------------------------------------------------
         // VILLAGE
-        // -------------------------------------------------
+        group.setVillageName(groupDto.getVillageName());
 
-        group.setVillageName(
-                groupDto.getVillageName()
-        );
-
-
-        // -------------------------------------------------
         // GROUP NAME
-        // -------------------------------------------------
+        group.setGroupName(groupDto.getGroupName());
 
-        group.setGroupName(
-                groupDto.getGroupName()
-        );
-
-
-        Group savedGroup =
-                groupRepository.save(group);
+        Group savedGroup = groupRepository.save(group);
 
         return convertToDto(savedGroup);
     }
-
 
     // =====================================================
     // GET ALL GROUPS
@@ -229,8 +155,7 @@ public class GroupServiceImpl implements GroupService {
     @Override
     public List<GroupDto> getAll() {
 
-        Long currentCmrcId =
-                getCurrentCmrcId();
+        Long currentCmrcId = getCurrentCmrcId();
 
         return groupRepository
                 .findByCmrcId(currentCmrcId)
@@ -239,7 +164,6 @@ public class GroupServiceImpl implements GroupService {
                 .collect(Collectors.toList());
     }
 
-
     // =====================================================
     // GET GROUP BY ID
     // =====================================================
@@ -247,31 +171,21 @@ public class GroupServiceImpl implements GroupService {
     @Override
     public GroupDto getById(Long id) {
 
-        Group group =
-                getAuthorizedGroup(id);
+        Group group = getAuthorizedGroup(id);
 
         return convertToDto(group);
     }
-
 
     // =====================================================
     // GET GROUPS BY CMRC ID
     // =====================================================
 
     @Override
-    public List<GroupDto> getByCmrcId(
-            Long cmrcId
-    ) {
+    public List<GroupDto> getByCmrcId(Long cmrcId) {
 
-        Long currentCmrcId =
-                getCurrentCmrcId();
-
-        // -------------------------------------------------
-        // NEVER allow another CMRC ID
-        // -------------------------------------------------
+        Long currentCmrcId = getCurrentCmrcId();
 
         if (!currentCmrcId.equals(cmrcId)) {
-
             throw new RuntimeException(
                     "Access denied for this CMRC"
             );
@@ -284,20 +198,14 @@ public class GroupServiceImpl implements GroupService {
                 .collect(Collectors.toList());
     }
 
-
     // =====================================================
     // GET GROUPS BY VO / ALF ID
     // =====================================================
 
     @Override
-    public List<GroupDto> getByVoAlfId(
-            Long voAlfId
-    ) {
+    public List<GroupDto> getByVoAlfId(Long voAlfId) {
 
-        // -------------------------------------------------
         // Verify VO/ALF belongs to current CMRC
-        // -------------------------------------------------
-
         getAuthorizedVoAlf(voAlfId);
 
         return groupRepository
@@ -312,7 +220,6 @@ public class GroupServiceImpl implements GroupService {
                 .collect(Collectors.toList());
     }
 
-
     // =====================================================
     // UPDATE GROUP
     // =====================================================
@@ -320,78 +227,36 @@ public class GroupServiceImpl implements GroupService {
     @Override
     public GroupDto update(
             Long id,
-            GroupDto groupDto
-    ) {
+            GroupDto groupDto) {
 
-        // -------------------------------------------------
         // Existing Group must belong to current CMRC
-        // -------------------------------------------------
+        Group group = getAuthorizedGroup(id);
 
-        Group group =
-                getAuthorizedGroup(id);
-
-
-        // -------------------------------------------------
         // New VO/ALF must belong to current CMRC
-        // -------------------------------------------------
-
         if (groupDto.getVoAlfId() == null) {
-
             throw new RuntimeException(
                     "VO / ALF ID is required"
             );
         }
 
-        getAuthorizedVoAlf(
-                groupDto.getVoAlfId()
-        );
+        getAuthorizedVoAlf(groupDto.getVoAlfId());
 
-
-        // -------------------------------------------------
         // CMRC
-        // -------------------------------------------------
-        // Never take CMRC from frontend.
-        // Keep current user's CMRC.
-        // -------------------------------------------------
+        group.setCmrcId(getCurrentCmrcId());
 
-        group.setCmrcId(
-                getCurrentCmrcId()
-        );
-
-
-        // -------------------------------------------------
         // VO / ALF
-        // -------------------------------------------------
+        group.setVoAlfId(groupDto.getVoAlfId());
 
-        group.setVoAlfId(
-                groupDto.getVoAlfId()
-        );
-
-
-        // -------------------------------------------------
         // VILLAGE
-        // -------------------------------------------------
+        group.setVillageName(groupDto.getVillageName());
 
-        group.setVillageName(
-                groupDto.getVillageName()
-        );
-
-
-        // -------------------------------------------------
         // GROUP NAME
-        // -------------------------------------------------
+        group.setGroupName(groupDto.getGroupName());
 
-        group.setGroupName(
-                groupDto.getGroupName()
-        );
-
-
-        Group updatedGroup =
-                groupRepository.save(group);
+        Group updatedGroup = groupRepository.save(group);
 
         return convertToDto(updatedGroup);
     }
-
 
     // =====================================================
     // DELETE GROUP
@@ -400,63 +265,62 @@ public class GroupServiceImpl implements GroupService {
     @Override
     public void delete(Long id) {
 
-        // -------------------------------------------------
-        // Verify ownership first
-        // -------------------------------------------------
-
-        Group group =
-                getAuthorizedGroup(id);
+        Group group = getAuthorizedGroup(id);
 
         groupRepository.delete(group);
     }
-
 
     // =====================================================
     // ENTITY → DTO
     // =====================================================
 
-    private GroupDto convertToDto(
-            Group group
-    ) {
+    private GroupDto convertToDto(Group group) {
 
-        GroupDto dto =
-                new GroupDto();
+        GroupDto dto = new GroupDto();
 
-        dto.setId(
-                group.getId()
-        );
+        // =================================================
+        // BASIC GROUP DATA
+        // =================================================
 
-        // -------------------------------------------------
-        // CMRC
-        // -------------------------------------------------
+        dto.setId(group.getId());
 
-        dto.setCmrcId(
-                group.getCmrcId()
-        );
+        dto.setCmrcId(group.getCmrcId());
 
-        // -------------------------------------------------
-        // VO / ALF
-        // -------------------------------------------------
+        dto.setVoAlfId(group.getVoAlfId());
 
-        dto.setVoAlfId(
-                group.getVoAlfId()
-        );
+        dto.setVillageName(group.getVillageName());
 
-        // -------------------------------------------------
-        // VILLAGE
-        // -------------------------------------------------
+        dto.setGroupName(group.getGroupName());
 
-        dto.setVillageName(
-                group.getVillageName()
-        );
+        // =================================================
+        // CMRC NAME
+        // =================================================
 
-        // -------------------------------------------------
-        // GROUP NAME
-        // -------------------------------------------------
+        if (group.getCmrcId() != null) {
 
-        dto.setGroupName(
-                group.getGroupName()
-        );
+            Cmrc cmrc =
+                    cmrcRepository.findById(group.getCmrcId())
+                            .orElse(null);
+
+            if (cmrc != null) {
+                dto.setCmrcName(cmrc.getCmrcName());
+            }
+        }
+
+        // =================================================
+        // VO / ALF NAME
+        // =================================================
+
+        if (group.getVoAlfId() != null) {
+
+            VoAlf voAlf =
+                    voAlfRepository.findById(group.getVoAlfId())
+                            .orElse(null);
+
+            if (voAlf != null) {
+                dto.setVoAlfName(voAlf.getVoAlfName());
+            }
+        }
 
         return dto;
     }
