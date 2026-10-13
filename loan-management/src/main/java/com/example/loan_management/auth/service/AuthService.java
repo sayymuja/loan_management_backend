@@ -1,4 +1,4 @@
-package com.example.loan_management.auth.service;
+        package com.example.loan_management.auth.service;
 
 import com.example.loan_management.auth.dto.SignupRequest;
 import com.example.loan_management.auth.entity.User;
@@ -6,6 +6,7 @@ import com.example.loan_management.auth.repository.UserRepository;
 import com.example.loan_management.auth.security.JwtService;
 import com.example.loan_management.entity.Cmrc;
 import com.example.loan_management.repository.CmrcRepository;
+
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -35,117 +36,126 @@ public class AuthService {
 
     public User signup(SignupRequest request) {
 
-        // Check email
-        if (userRepository.existsByEmail(request.getEmail())) {
+        if (request.getEmail() == null
+                || request.getEmail().trim().isEmpty()) {
+            throw new RuntimeException("Email is required");
+        }
+
+        String normalizedEmail =
+                request.getEmail().trim().toLowerCase();
+
+        if (userRepository.existsByEmailIgnoreCase(normalizedEmail)) {
             throw new RuntimeException("Email already registered");
         }
 
-        // Validate CMRC name
-        if (request.getCmrcName() == null ||
-                request.getCmrcName().trim().isEmpty()) {
+        if (request.getPassword() == null
+                || request.getPassword().isEmpty()) {
+            throw new RuntimeException("Password is required");
+        }
 
+        if (request.getName() == null
+                || request.getName().trim().isEmpty()) {
+            throw new RuntimeException("Name is required");
+        }
+
+        if (request.getCmrcName() == null
+                || request.getCmrcName().trim().isEmpty()) {
             throw new RuntimeException("CMRC Name is required");
         }
 
-        // Validate District
-        if (request.getDistrict() == null ||
-                request.getDistrict().trim().isEmpty()) {
-
+        if (request.getDistrict() == null
+                || request.getDistrict().trim().isEmpty()) {
             throw new RuntimeException("District is required");
         }
 
-        // Validate Taluka
-        if (request.getTaluka() == null ||
-                request.getTaluka().trim().isEmpty()) {
-
+        if (request.getTaluka() == null
+                || request.getTaluka().trim().isEmpty()) {
             throw new RuntimeException("Taluka is required");
         }
 
-        // Find existing CMRC by name
+        // Find existing CMRC or create a new one
         Cmrc cmrc = cmrcRepository
                 .findByCmrcNameIgnoreCase(
                         request.getCmrcName().trim()
                 )
                 .orElseGet(() -> {
-
-                    // Create new CMRC
                     Cmrc newCmrc = new Cmrc();
-
                     newCmrc.setCmrcName(
                             request.getCmrcName().trim()
                     );
-
                     return cmrcRepository.save(newCmrc);
                 });
 
-        // =====================================================
-        // CREATE USER
-        // =====================================================
-
+        // Create user
         User user = new User();
 
-        user.setName(request.getName());
+        user.setName(request.getName().trim());
+        user.setEmail(normalizedEmail);
 
-        user.setEmail(request.getEmail());
+        // First registered user becomes ADMIN.
+// All subsequent users become USER.
+//        if (userRepository.count() == 0) {
+//            user.setRole("ADMIN");
+//        } else {
+//            user.setRole("USER");
+//        }
+        user.setRole("USER");
 
+        // Encode password using BCrypt
         user.setPassword(
-                passwordEncoder.encode(
-                        request.getPassword()
-                )
+                passwordEncoder.encode(request.getPassword())
         );
 
-        // =====================================================
-        // LOCATION
-        // =====================================================
+        user.setDistrict(request.getDistrict().trim());
+        user.setTaluka(request.getTaluka().trim());
 
-        user.setDistrict(
-                request.getDistrict().trim()
-        );
-
-        user.setTaluka(
-                request.getTaluka().trim()
-        );
-
-        // =====================================================
-        // LINK CMRC WITH USER
-        // =====================================================
-
+        // Link user to CMRC
         user.setCmrc(cmrc);
 
         return userRepository.save(user);
     }
 
-
     // =========================================================
     // LOGIN
     // =========================================================
 
-    public String login(
-            String email,
-            String password) {
+    public String login(String email, String password) {
 
-        User user =
-                userRepository.findByEmail(email)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Invalid email or password"
-                                )
-                        );
-
-        if (!passwordEncoder.matches(
-                password,
-                user.getPassword())) {
-
+        if (email == null
+                || email.trim().isEmpty()
+                || password == null
+                || password.isEmpty()) {
             throw new RuntimeException(
                     "Invalid email or password"
             );
         }
 
-        return jwtService.generateToken(
-                user.getEmail()
-        );
-    }
+        String normalizedEmail =
+                email.trim().toLowerCase();
 
+        // Case-insensitive email lookup
+        User user = userRepository
+                .findByEmailIgnoreCase(normalizedEmail)
+                .orElseThrow(() ->
+                        new RuntimeException(
+                                "Invalid email or password"
+                        )
+                );
+
+        // Verify password
+        if (user.getPassword() == null
+                || !passwordEncoder.matches(
+                password,
+                user.getPassword()
+        )) {
+            throw new RuntimeException(
+                    "Invalid email or password"
+            );
+        }
+
+        // Return JWT after successful authentication
+        return jwtService.generateToken(user.getEmail());
+    }
 
     // =========================================================
     // GET USER BY EMAIL
@@ -153,12 +163,17 @@ public class AuthService {
 
     public User getUserByEmail(String email) {
 
+        if (email == null || email.trim().isEmpty()) {
+            throw new RuntimeException("User not found");
+        }
+
+        String normalizedEmail =
+                email.trim().toLowerCase();
+
         return userRepository
-                .findByEmail(email)
+                .findByEmailIgnoreCase(normalizedEmail)
                 .orElseThrow(() ->
-                        new RuntimeException(
-                                "User not found"
-                        )
+                        new RuntimeException("User not found")
                 );
     }
 }

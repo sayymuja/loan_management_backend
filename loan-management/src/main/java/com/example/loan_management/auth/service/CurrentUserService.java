@@ -10,6 +10,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.util.Locale;
+
 @Service
 @RequiredArgsConstructor
 public class CurrentUserService {
@@ -20,8 +22,7 @@ public class CurrentUserService {
     public User getCurrentUser() {
 
         Authentication authentication =
-                SecurityContextHolder.getContext()
-                        .getAuthentication();
+                SecurityContextHolder.getContext().getAuthentication();
 
         if (authentication == null
                 || !authentication.isAuthenticated()
@@ -33,19 +34,52 @@ public class CurrentUserService {
             );
         }
 
-        String email = authentication.getName();
+        String email = authentication.getName().trim();
 
-        return userRepository.findByEmail(email)
+        return userRepository.findByEmailIgnoreCase(email)
                 .orElseThrow(() ->
                         new AuthenticationCredentialsNotFoundException(
-                                "Logged-in user not found"
+                                "Logged-in user not found: " + email
                         )
                 );
+    }
+
+    // NORMALIZE ROLE
+    public String getCurrentRole() {
+
+        User user = getCurrentUser();
+
+        if (user.getRole() == null || user.getRole().trim().isEmpty()) {
+            return "";
+        }
+
+        return user.getRole()
+                .trim()
+                .toUpperCase(Locale.ROOT)
+                .replaceFirst("^ROLE_", "");
     }
 
     // CURRENT USER ID
     public Long getCurrentUserId() {
         return getCurrentUser().getId();
+    }
+
+    // CHECK WHETHER CURRENT USER IS ADMIN
+    public boolean isAdmin() {
+        return "ADMIN".equals(getCurrentRole());
+    }
+
+    // CHECK WHETHER CURRENT USER IS SUPER_ADMIN
+    public boolean isSuperAdmin() {
+        return "SUPER_ADMIN".equals(getCurrentRole());
+    }
+
+    // CHECK WHETHER CURRENT USER IS ADMIN OR SUPER_ADMIN
+    public boolean isAdminOrSuperAdmin() {
+        String role = getCurrentRole();
+
+        return "ADMIN".equals(role)
+                || "SUPER_ADMIN".equals(role);
     }
 
     // CURRENT CMRC ID

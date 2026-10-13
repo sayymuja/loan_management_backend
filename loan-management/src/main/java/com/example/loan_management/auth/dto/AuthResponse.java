@@ -1,3 +1,4 @@
+
 package com.example.loan_management.auth.dto;
 
 import lombok.AllArgsConstructor;
@@ -22,4 +23,6 @@ public class AuthResponse {
     private String taluka;
 
     private String token;
+
+    private String role;
 }

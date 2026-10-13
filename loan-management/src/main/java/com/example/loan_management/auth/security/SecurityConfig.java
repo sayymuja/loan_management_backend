@@ -1,10 +1,12 @@
-        package com.example.loan_management.auth.security;
+
+package com.example.loan_management.auth.security;
 
 import java.util.Arrays;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -17,6 +19,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -26,31 +29,26 @@ public class SecurityConfig {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
     }
 
-    // SECURITY FILTER CHAIN
     @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http) throws Exception {
 
         http
-                // CSRF
                 .csrf(csrf -> csrf.disable())
-
-                // CORS
                 .cors(cors -> cors.configurationSource(
                         corsConfigurationSource()))
-
-                // AUTHORIZATION
                 .authorizeHttpRequests(auth -> auth
 
-                        // Signup and login are public
+                        // Public signup and login
                         .requestMatchers(
                                 "/api/auth/signup",
                                 "/api/auth/login"
                         ).permitAll()
 
                         // Browser preflight requests
-                        .requestMatchers(HttpMethod.OPTIONS, "/**")
-                        .permitAll()
+                        .requestMatchers(
+                                HttpMethod.OPTIONS, "/**"
+                        ).permitAll()
 
                         // Public loan image viewing and downloading
                         .requestMatchers(
@@ -58,24 +56,27 @@ public class SecurityConfig {
                                 "/api/loan-images/download/**"
                         ).permitAll()
 
+                        // SUPER_ADMIN-only endpoints
+                        .requestMatchers("/api/super-admin/**")
+                        .hasRole("SUPER_ADMIN")
+
+                        // Existing admin endpoints remain ADMIN-only
+                        .requestMatchers("/api/admin/**")
+                        .hasRole("ADMIN")
+
                         // All other endpoints require authentication
                         .anyRequest().authenticated()
                 )
-
-                // JWT FILTER
                 .addFilterBefore(
                         jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter.class
                 )
-
-                // Disable default authentication mechanisms
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable());
 
         return http.build();
     }
 
-    // CORS CONFIGURATION
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
 
@@ -87,12 +88,8 @@ public class SecurityConfig {
 
         configuration.setAllowedMethods(
                 Arrays.asList(
-                        "GET",
-                        "POST",
-                        "PUT",
-                        "DELETE",
-                        "PATCH",
-                        "OPTIONS"
+                        "GET", "POST", "PUT",
+                        "DELETE", "PATCH", "OPTIONS"
                 )
         );
 
@@ -109,12 +106,13 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source =
                 new UrlBasedCorsConfigurationSource();
 
-        source.registerCorsConfiguration("/**", configuration);
+        source.registerCorsConfiguration(
+                "/**", configuration
+        );
 
         return source;
     }
 
-    // PASSWORD ENCODER
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();

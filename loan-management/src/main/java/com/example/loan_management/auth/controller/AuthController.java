@@ -1,10 +1,11 @@
-package com.example.loan_management.auth.controller;
+        package com.example.loan_management.auth.controller;
 
 import com.example.loan_management.auth.dto.AuthResponse;
 import com.example.loan_management.auth.dto.LoginRequest;
 import com.example.loan_management.auth.dto.SignupRequest;
 import com.example.loan_management.auth.entity.User;
 import com.example.loan_management.auth.service.AuthService;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,47 +20,55 @@ public class AuthController {
         this.authService = authService;
     }
 
-    // =========================================================
     // SIGNUP
-    // =========================================================
-
     @PostMapping("/signup")
     public ResponseEntity<User> signup(
             @RequestBody SignupRequest request) {
 
         User savedUser = authService.signup(request);
 
-        // Password response mein nahi bhejna
+        // Never return password
         savedUser.setPassword(null);
 
         return ResponseEntity.ok(savedUser);
     }
 
-    // =========================================================
     // LOGIN
-    // =========================================================
-
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(
             @RequestBody LoginRequest request) {
 
+        // Generate JWT token
         String token = authService.login(
                 request.getEmail(),
                 request.getPassword()
         );
 
-        User user = authService
-                .getUserByEmail(request.getEmail());
+        // Fetch user
+        User user = authService.getUserByEmail(
+                request.getEmail()
+        );
 
+        // Get CMRC details
+        Long cmrcId = null;
+        String cmrcName = null;
+
+        if (user.getCmrc() != null) {
+            cmrcId = user.getCmrc().getId();
+            cmrcName = user.getCmrc().getCmrcName();
+        }
+
+        // AuthResponse order: token first, role second
         AuthResponse response = new AuthResponse(
                 user.getId(),
                 user.getName(),
                 user.getEmail(),
-                user.getCmrc().getId(),
-                user.getCmrc().getCmrcName(),
+                cmrcId,
+                cmrcName,
                 user.getDistrict(),
                 user.getTaluka(),
-                token
+                token,
+                user.getRole()
         );
 
         return ResponseEntity.ok(response);

@@ -26,6 +26,9 @@ public class User {
     @Column(nullable = false)
     private String password;
 
+    @Column(name = "role", nullable = false, length = 20)
+    private String role = "USER";
+
     // =========================================================
     // LOCATION DETAILS
     // =========================================================
@@ -97,6 +100,7 @@ public class User {
         this.password = password;
     }
 
+
     public String getDistrict() {
         return district;
     }
@@ -120,4 +124,13 @@ public class User {
     public void setCmrc(Cmrc cmrc) {
         this.cmrc = cmrc;
     }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
+    }
+
 }
