@@ -1,14 +1,13 @@
-
-package com.example.loan_management.service;
+        package com.example.loan_management.service;
 
 import com.example.loan_management.auth.entity.User;
 import com.example.loan_management.auth.service.CurrentUserService;
+import com.example.loan_management.dto.FundTransactionRequest;
 import com.example.loan_management.entity.Cmrc;
 import com.example.loan_management.entity.FundAccount;
 import com.example.loan_management.entity.FundApprovalRequest;
 import com.example.loan_management.entity.FundTransaction;
 import com.example.loan_management.entity.VoAlf;
-import com.example.loan_management.dto.FundTransactionRequest;
 import com.example.loan_management.repository.CmrcRepository;
 import com.example.loan_management.repository.FundAccountRepository;
 import com.example.loan_management.repository.FundApprovalRequestRepository;
@@ -54,7 +53,9 @@ public class FundManagementServiceImpl implements FundManagementService {
                     BigDecimal existingBalance =
                             voAlf.getReceivedFund() == null
                                     ? ZERO
-                                    : BigDecimal.valueOf(voAlf.getReceivedFund());
+                                    : BigDecimal.valueOf(
+                                    voAlf.getReceivedFund()
+                            );
 
                     account.setOpeningBalance(existingBalance);
                     account.setBalance(existingBalance);
@@ -105,7 +106,7 @@ public class FundManagementServiceImpl implements FundManagementService {
                         : LocalDate.now()
         );
         transaction.setRemark(request.getRemark());
-        transaction.setCreatedBy(currentUserService.getCurrentUserId());
+        transaction.setCreatedBy(currentUser.getId());
 
         if ("USER".equals(role)) {
             FundApprovalRequest approval = new FundApprovalRequest();
@@ -133,7 +134,7 @@ public class FundManagementServiceImpl implements FundManagementService {
                     FundTransaction.ApprovalStatus.PENDING
             );
 
-            // Pending transaction does not change either balance.
+            // Pending transactions must not change balances.
             return fundTransactionRepository.save(transaction);
         }
 
@@ -182,7 +183,6 @@ public class FundManagementServiceImpl implements FundManagementService {
         if (currentCmrcId == null
                 || voAlf.getCmrc() == null
                 || !currentCmrcId.equals(voAlf.getCmrc().getId())) {
-
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
                     "You cannot access another CMRC's VO/ALF"
@@ -198,7 +198,6 @@ public class FundManagementServiceImpl implements FundManagementService {
                 || request.getCategory() == null
                 || request.getAmount() == null
                 || request.getAmount().compareTo(ZERO) <= 0) {
-
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "VO/ALF, transaction type, category and a positive amount are required"
@@ -207,7 +206,6 @@ public class FundManagementServiceImpl implements FundManagementService {
 
         if (request.getTransactionDate() != null
                 && request.getTransactionDate().isAfter(LocalDate.now())) {
-
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Transaction date cannot be in the future"
@@ -242,7 +240,6 @@ public class FundManagementServiceImpl implements FundManagementService {
                         "Invalid category for Receipt"
                 );
             }
-
         } else {
             boolean validPayment = switch (category) {
                 case LOAN_DISBURSEMENT,
@@ -307,7 +304,6 @@ public class FundManagementServiceImpl implements FundManagementService {
                 || category == null
                 || amount == null
                 || amount.compareTo(ZERO) <= 0) {
-
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Valid VO/ALF, transaction details and positive amount are required"
@@ -338,6 +334,7 @@ public class FundManagementServiceImpl implements FundManagementService {
                     );
                 }
 
+                // Do not apply the balance change a second time.
                 return old;
             }
         }
@@ -351,7 +348,6 @@ public class FundManagementServiceImpl implements FundManagementService {
                         referenceId,
                         category
                 )) {
-
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "A fund transaction already exists for this reference"
@@ -384,11 +380,8 @@ public class FundManagementServiceImpl implements FundManagementService {
     }
 
     /*
-     * Called for an ADMIN transaction or a pending transaction
-     * that has passed ADMIN approval checks.
-     *
-     * CMRC transfers update both balances in the same transaction.
-     * Ordinary VO/ALF receipts and payments do not change CMRC.
+     * Updates the VO/ALF account and its receivedFund together.
+     * CMRC changes only for actual transfers between CMRC and VO/ALF.
      */
     void applyBalanceChange(FundTransaction transaction) {
         FundAccount account = transaction.getFundAccount();
@@ -399,7 +392,6 @@ public class FundManagementServiceImpl implements FundManagementService {
                 || amount.compareTo(ZERO) <= 0
                 || transaction.getTransactionType() == null
                 || transaction.getCategory() == null) {
-
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Invalid fund transaction"
@@ -416,7 +408,9 @@ public class FundManagementServiceImpl implements FundManagementService {
         }
 
         BigDecimal currentBalance =
-                account.getBalance() != null ? account.getBalance() : ZERO;
+                account.getBalance() != null
+                        ? account.getBalance()
+                        : ZERO;
 
         boolean receipt =
                 transaction.getTransactionType()
@@ -450,8 +444,7 @@ public class FundManagementServiceImpl implements FundManagementService {
             updatedVoAlfBalance = currentBalance.subtract(amount);
         }
 
-        // Only actual CMRC-to-VO/ALF or VO/ALF-to-CMRC transfers
-        // change CMRC.totalFund.
+        // Only real transfers affect CMRC.totalFund.
         if (addFundTransfer || returnToCmrc) {
             Cmrc cmrc = cmrcRepository.findById(voAlf.getCmrc().getId())
                     .orElseThrow(() -> new ResponseStatusException(
@@ -459,9 +452,10 @@ public class FundManagementServiceImpl implements FundManagementService {
                             "CMRC not found for this VO/ALF"
                     ));
 
-            BigDecimal cmrcBalance = cmrc.getTotalFund() == null
-                    ? ZERO
-                    : BigDecimal.valueOf(cmrc.getTotalFund());
+            BigDecimal cmrcBalance =
+                    cmrc.getTotalFund() == null
+                            ? ZERO
+                            : BigDecimal.valueOf(cmrc.getTotalFund());
 
             BigDecimal updatedCmrcBalance;
 
@@ -485,6 +479,7 @@ public class FundManagementServiceImpl implements FundManagementService {
         account.setBalance(updatedVoAlfBalance);
         fundAccountRepository.save(account);
 
+        // Keep VO/ALF balance in sync with FundAccount balance.
         voAlf.setReceivedFund(updatedVoAlfBalance.doubleValue());
         voAlfRepository.save(voAlf);
     }
