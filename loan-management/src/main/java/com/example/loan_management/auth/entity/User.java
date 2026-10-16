@@ -1,8 +1,11 @@
+
 package com.example.loan_management.auth.entity;
 
 import com.example.loan_management.entity.Cmrc;
 import jakarta.persistence.*;
 import lombok.Data;
+
+import java.time.LocalDate;
 
 @Entity
 @Table(name = "users")
@@ -40,7 +43,17 @@ public class User {
     private String taluka;
 
     // =========================================================
-    // CMRC
+    // ACCOUNT DETAILS
+    // =========================================================
+
+    @Column(name = "account_no")
+    private String accountNo;
+
+    @Column(name = "account_opening_date")
+    private LocalDate accountOpeningDate;
+
+    // =========================================================
+    // CMRC RELATIONSHIP
     // =========================================================
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -54,18 +67,14 @@ public class User {
     public User() {
     }
 
-    public User(
-            String name,
-            String email,
-            String password
-    ) {
+    public User(String name, String email, String password) {
         this.name = name;
         this.email = email;
         this.password = password;
     }
 
     // =========================================================
-    // GETTERS / SETTERS
+    // GETTERS AND SETTERS
     // =========================================================
 
     public Long getId() {
@@ -100,6 +109,13 @@ public class User {
         this.password = password;
     }
 
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
+    }
 
     public String getDistrict() {
         return district;
@@ -117,6 +133,22 @@ public class User {
         this.taluka = taluka;
     }
 
+    public String getAccountNo() {
+        return accountNo;
+    }
+
+    public void setAccountNo(String accountNo) {
+        this.accountNo = accountNo;
+    }
+
+    public LocalDate getAccountOpeningDate() {
+        return accountOpeningDate;
+    }
+
+    public void setAccountOpeningDate(LocalDate accountOpeningDate) {
+        this.accountOpeningDate = accountOpeningDate;
+    }
+
     public Cmrc getCmrc() {
         return cmrc;
     }
@@ -124,13 +156,4 @@ public class User {
     public void setCmrc(Cmrc cmrc) {
         this.cmrc = cmrc;
     }
-
-    public String getRole() {
-        return role;
-    }
-
-    public void setRole(String role) {
-        this.role = role;
-    }
-
 }

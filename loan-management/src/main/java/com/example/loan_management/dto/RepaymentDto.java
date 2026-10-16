@@ -1,4 +1,4 @@
-package com.example.loan_management.dto;
+        package com.example.loan_management.dto;
 
 import lombok.Data;
 
@@ -34,5 +34,4 @@ public class RepaymentDto {
     private Double scheduledAmount;
 
     private String paymentStatus;
-
 }

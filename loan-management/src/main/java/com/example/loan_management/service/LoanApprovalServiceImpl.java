@@ -31,235 +31,284 @@ public class LoanApprovalServiceImpl implements LoanApprovalService {
 
     private final LoanApprovalRequestRepository requestRepository;
     private final LoanService loanService;
-    private final ClScheduleService clScheduleService;
     private final RepaymentService repaymentService;
     private final CurrentUserService currentUserService;
     private final ObjectMapper objectMapper;
 
-    // USER: SUBMIT CREATE REQUEST
+    // =========================================================
+    // SUBMIT CREATE LOAN REQUEST
+    // =========================================================
+
     @Override
     @Transactional
     public LoanApprovalRequestDto submitCreateRequest(LoanDto loanDto) {
-        requireUser();
-        validateLoanDto(loanDto);
 
+        User user = requireUser();
+
+        validateLoanDto(loanDto);
         loanService.getByWomanId(loanDto.getWomanId());
 
         LoanApprovalRequest request = new LoanApprovalRequest();
+
         request.setRequestType("CREATE");
         request.setLoanId(null);
         request.setRequestData(toJson(loanDto));
-        request.setRequestedBy(currentUserService.getCurrentUser());
-        request.setCmrcId(currentUserService.getCurrentCmrcId());
+        request.setRequestedBy(user);
+        request.setCmrcId(user.getCmrc().getId());
         request.setStatus("PENDING");
 
         return toDto(requestRepository.save(request));
     }
 
-    // USER: SUBMIT UPDATE REQUEST
+    // =========================================================
+    // SUBMIT UPDATE LOAN REQUEST
+    // =========================================================
+
     @Override
     @Transactional
     public LoanApprovalRequestDto submitUpdateRequest(
             Long loanId,
-            LoanDto loanDto
-    ) {
-        requireUser();
+            LoanDto loanDto) {
+
+        User user = requireUser();
+
         validateLoanDto(loanDto);
 
         loanService.getById(loanId);
         loanService.getByWomanId(loanDto.getWomanId());
 
         LoanApprovalRequest request = new LoanApprovalRequest();
+
         request.setRequestType("UPDATE");
         request.setLoanId(loanId);
         request.setRequestData(toJson(loanDto));
-        request.setRequestedBy(currentUserService.getCurrentUser());
-        request.setCmrcId(currentUserService.getCurrentCmrcId());
+        request.setRequestedBy(user);
+        request.setCmrcId(user.getCmrc().getId());
         request.setStatus("PENDING");
 
         return toDto(requestRepository.save(request));
     }
 
-    // USER: SUBMIT DELETE REQUEST
+    // =========================================================
+    // SUBMIT DELETE LOAN REQUEST
+    // =========================================================
+
     @Override
     @Transactional
     public LoanApprovalRequestDto submitDeleteRequest(Long loanId) {
-        requireUser();
 
-        LoanDto existingLoan = loanService.getById(loanId);
+        User user = requireUser();
+
+        loanService.getById(loanId);
 
         LoanApprovalRequest request = new LoanApprovalRequest();
+
         request.setRequestType("DELETE");
         request.setLoanId(loanId);
-        request.setRequestData(toJson(existingLoan));
-        request.setRequestedBy(currentUserService.getCurrentUser());
-        request.setCmrcId(currentUserService.getCurrentCmrcId());
+        request.setRequestData("{}");
+        request.setRequestedBy(user);
+        request.setCmrcId(user.getCmrc().getId());
         request.setStatus("PENDING");
 
         return toDto(requestRepository.save(request));
     }
 
-    // ADMIN: GET PENDING REQUESTS
+    // =========================================================
+    // SUBMIT EMI PAYMENT REQUEST
+    // =========================================================
+
+    @Override
+    @Transactional
+    public LoanApprovalRequestDto submitPayEmiRequest(
+            Long repaymentId,
+            Double paidAmount,
+            Double penaltyAmount,
+            Boolean regularRepayment) {
+
+        User user = requireUser();
+
+        validatePaymentAmounts(paidAmount, penaltyAmount);
+
+        RepaymentDto repayment = repaymentService.getById(repaymentId);
+
+        if ("PAID".equalsIgnoreCase(repayment.getPaymentStatus())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "This EMI is already fully paid."
+            );
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("repaymentId", repaymentId);
+        data.put("paidAmount", paidAmount);
+        data.put(
+                "penaltyAmount",
+                penaltyAmount == null ? 0.0 : penaltyAmount
+        );
+        data.put(
+                "regularRepayment",
+                Boolean.TRUE.equals(regularRepayment)
+        );
+
+        LoanApprovalRequest request = new LoanApprovalRequest();
+
+        request.setRequestType("PAY_EMI");
+        request.setLoanId(repayment.getLoanId());
+        request.setRequestData(toJsonObject(data));
+        request.setRequestedBy(user);
+        request.setCmrcId(user.getCmrc().getId());
+        request.setStatus("PENDING");
+
+        return toDto(requestRepository.save(request));
+    }
+
+    // =========================================================
+    // SUBMIT EDIT PAID EMI REQUEST
+    // =========================================================
+
+    @Override
+    @Transactional
+    public LoanApprovalRequestDto submitEditPaidEmiRequest(
+            Long repaymentId,
+            Double paidAmount,
+            Double penaltyAmount) {
+
+        User user = requireUser();
+
+        validatePaymentAmounts(paidAmount, penaltyAmount);
+
+        RepaymentDto repayment = repaymentService.getById(repaymentId);
+
+        if (!"PAID".equalsIgnoreCase(repayment.getPaymentStatus())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Only a fully paid EMI can be submitted for editing."
+            );
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("repaymentId", repaymentId);
+        data.put("paidAmount", paidAmount);
+        data.put(
+                "penaltyAmount",
+                penaltyAmount == null ? 0.0 : penaltyAmount
+        );
+
+        LoanApprovalRequest request = new LoanApprovalRequest();
+
+        request.setRequestType("EDIT_EMI");
+        request.setLoanId(repayment.getLoanId());
+        request.setRequestData(toJsonObject(data));
+        request.setRequestedBy(user);
+        request.setCmrcId(user.getCmrc().getId());
+        request.setStatus("PENDING");
+
+        return toDto(requestRepository.save(request));
+    }
+
+    // =========================================================
+    // GET PENDING REQUESTS
+    // =========================================================
+
     @Override
     public List<LoanApprovalRequestDto> getPendingRequests() {
-        requireAdmin();
 
-        Long cmrcId = currentUserService.getCurrentCmrcId();
+        User admin = requireAdmin();
 
         return requestRepository
                 .findByCmrcIdAndStatusOrderByCreatedAtDesc(
-                        cmrcId, "PENDING"
+                        admin.getCmrc().getId(),
+                        "PENDING"
                 )
                 .stream()
                 .map(this::toDto)
                 .toList();
     }
 
-    // USER: GET MY REQUESTS
+    // =========================================================
+    // GET MY REQUESTS
+    // =========================================================
+
     @Override
     public List<LoanApprovalRequestDto> getMyRequests() {
-        requireUser();
+
+        User user = requireUser();
 
         return requestRepository
-                .findByRequestedBy_IdOrderByCreatedAtDesc(
-                        currentUserService.getCurrentUserId()
-                )
+                .findByRequestedBy_IdOrderByCreatedAtDesc(user.getId())
                 .stream()
                 .map(this::toDto)
                 .toList();
     }
 
-    // ADMIN: APPROVE REQUEST
+    // =========================================================
+    // APPROVE REQUEST
+    // =========================================================
+
     @Override
     @Transactional
     public LoanApprovalRequestDto approve(Long requestId, String remarks) {
-        requireAdmin();
 
-        Long cmrcId = currentUserService.getCurrentCmrcId();
+        User admin = requireAdmin();
 
         LoanApprovalRequest request = requestRepository
-                .findByIdAndCmrcId(requestId, cmrcId)
+                .findByIdAndCmrcId(
+                        requestId,
+                        admin.getCmrc().getId()
+                )
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
-                        "Approval request not found"
+                        "Approval request not found."
                 ));
 
         if (!"PENDING".equalsIgnoreCase(request.getStatus())) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "This request has already been reviewed"
+                    "This request has already been reviewed."
             );
         }
 
-        String requestType = request.getRequestType() == null
-                ? ""
-                : request.getRequestType()
-                .trim()
-                .toUpperCase(Locale.ROOT);
+        String requestType = normalizeRequestType(
+                request.getRequestType()
+        );
 
         switch (requestType) {
-            case "PAY_EMI" -> {
-                JsonNode data = readRequestData(request.getRequestData());
-                Long repaymentId = data.path("repaymentId").asLong(-1);
 
-                if (repaymentId <= 0) {
-                    throw new ResponseStatusException(
-                            HttpStatus.BAD_REQUEST,
-                            "Invalid repayment ID in approval request."
-                    );
-                }
+            case "PAY_EMI" -> approveEmiPayment(request);
 
-                RepaymentDto repayment =
-                        repaymentService.getById(repaymentId);
+            case "EDIT_EMI" -> throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Paid EMI editing is disabled until a ledger "
+                            + "correction/refund workflow is implemented."
+            );
 
-                if (request.getLoanId() == null
-                        || !request.getLoanId().equals(
-                        repayment.getLoanId())) {
-                    throw new ResponseStatusException(
-                            HttpStatus.BAD_REQUEST,
-                            "Repayment does not belong to the requested loan."
-                    );
-                }
-
-                if ("PAID".equalsIgnoreCase(
-                        repayment.getPaymentStatus())) {
-                    throw new ResponseStatusException(
-                            HttpStatus.BAD_REQUEST,
-                            "This EMI is already paid."
-                    );
-                }
-
-                if (!data.hasNonNull("paidAmount")
-                        || !data.hasNonNull("penaltyAmount")) {
-                    throw new ResponseStatusException(
-                            HttpStatus.BAD_REQUEST,
-                            "Payment amount or penalty amount is missing."
-                    );
-                }
-
-                validatePaymentAmounts(
-                        data.get("paidAmount").asDouble(),
-                        data.get("penaltyAmount").asDouble()
-                );
-
-                repaymentService.payEmi(
-                        repaymentId,
-                        data.get("paidAmount").asDouble(),
-                        data.get("penaltyAmount").asDouble(),
-                        data.hasNonNull("regularRepayment")
-                                && data.get("regularRepayment").asBoolean()
-                );
+            case "CREATE" -> {
+                LoanDto loanDto = readLoanDto(request.getRequestData());
+                LoanDto createdLoan = loanService.create(loanDto);
+                request.setLoanId(createdLoan.getId());
             }
 
-            case "EDIT_EMI" -> {
-                JsonNode data = readRequestData(request.getRequestData());
-                Long repaymentId = data.path("repaymentId").asLong(-1);
-
-                if (repaymentId <= 0) {
+            case "UPDATE" -> {
+                if (request.getLoanId() == null) {
                     throw new ResponseStatusException(
                             HttpStatus.BAD_REQUEST,
-                            "Invalid repayment ID in approval request."
+                            "Loan ID is missing from the update request."
                     );
                 }
 
-                RepaymentDto repayment =
-                        repaymentService.getById(repaymentId);
+                LoanDto loanDto = readLoanDto(request.getRequestData());
+                loanService.update(request.getLoanId(), loanDto);
+            }
 
-                if (request.getLoanId() == null
-                        || !request.getLoanId().equals(
-                        repayment.getLoanId())) {
+            case "DELETE" -> {
+                if (request.getLoanId() == null) {
                     throw new ResponseStatusException(
                             HttpStatus.BAD_REQUEST,
-                            "Repayment does not belong to the requested loan."
+                            "Loan ID is missing from the delete request."
                     );
                 }
 
-                if (!"PAID".equalsIgnoreCase(
-                        repayment.getPaymentStatus())) {
-                    throw new ResponseStatusException(
-                            HttpStatus.BAD_REQUEST,
-                            "This EMI is no longer in PAID status."
-                    );
-                }
-
-                if (!data.hasNonNull("paidAmount")
-                        || !data.hasNonNull("penaltyAmount")) {
-                    throw new ResponseStatusException(
-                            HttpStatus.BAD_REQUEST,
-                            "Payment amount or penalty amount is missing."
-                    );
-                }
-
-                validatePaymentAmounts(
-                        data.get("paidAmount").asDouble(),
-                        data.get("penaltyAmount").asDouble()
-                );
-
-                repaymentService.editPaidEmi(
-                        repaymentId,
-                        data.get("paidAmount").asDouble(),
-                        data.get("penaltyAmount").asDouble()
-                );
+                loanService.delete(request.getLoanId());
             }
 
             default -> throw new ResponseStatusException(
@@ -269,363 +318,425 @@ public class LoanApprovalServiceImpl implements LoanApprovalService {
         }
 
         request.setStatus("APPROVED");
-        request.setReviewedBy(currentUserService.getCurrentUser());
+        request.setReviewedBy(admin);
         request.setReviewedAt(LocalDateTime.now());
         request.setAdminRemarks(remarks);
 
         return toDto(requestRepository.save(request));
     }
 
-    // ADMIN: REJECT REQUEST
+    // =========================================================
+    // APPROVE EMI PAYMENT
+    // =========================================================
+
+    private void approveEmiPayment(LoanApprovalRequest request) {
+
+        JsonNode data = readRequestData(request.getRequestData());
+
+        if (!data.hasNonNull("repaymentId")
+                || !data.hasNonNull("paidAmount")) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Repayment ID and paid amount are required."
+            );
+        }
+
+        Long repaymentId = data.get("repaymentId").asLong();
+
+        RepaymentDto repayment = repaymentService.getById(repaymentId);
+
+        if (request.getLoanId() == null
+                || repayment.getLoanId() == null
+                || !request.getLoanId().equals(repayment.getLoanId())) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "The repayment does not belong to the requested loan."
+            );
+        }
+
+        if ("PAID".equalsIgnoreCase(repayment.getPaymentStatus())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "This EMI is already fully paid."
+            );
+        }
+
+        double paidAmount = data.get("paidAmount").asDouble();
+
+        double penaltyAmount = data.hasNonNull("penaltyAmount")
+                ? data.get("penaltyAmount").asDouble()
+                : 0.0;
+
+        boolean regularRepayment =
+                data.hasNonNull("regularRepayment")
+                        && data.get("regularRepayment").asBoolean();
+
+        validatePaymentAmounts(paidAmount, penaltyAmount);
+
+        String paymentEventId =
+                "EMI_APPROVAL_REQUEST:" + request.getId();
+
+        repaymentService.payEmi(
+                repaymentId,
+                paidAmount,
+                penaltyAmount,
+                regularRepayment,
+                paymentEventId
+        );
+    }
+
+    // =========================================================
+    // REJECT REQUEST
+    // =========================================================
+
     @Override
     @Transactional
     public LoanApprovalRequestDto reject(Long requestId, String remarks) {
-        requireAdmin();
 
-        Long cmrcId = currentUserService.getCurrentCmrcId();
+        User admin = requireAdmin();
 
         LoanApprovalRequest request = requestRepository
-                .findByIdAndCmrcId(requestId, cmrcId)
+                .findByIdAndCmrcId(
+                        requestId,
+                        admin.getCmrc().getId()
+                )
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
-                        "Approval request not found"
+                        "Approval request not found."
                 ));
 
         if (!"PENDING".equalsIgnoreCase(request.getStatus())) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "This request has already been reviewed"
+                    "This request has already been reviewed."
             );
         }
 
         request.setStatus("REJECTED");
-        request.setReviewedBy(currentUserService.getCurrentUser());
+        request.setReviewedBy(admin);
         request.setReviewedAt(LocalDateTime.now());
         request.setAdminRemarks(remarks);
 
         return toDto(requestRepository.save(request));
     }
 
-    // USER: SUBMIT PAY EMI REQUEST
-    @Override
-    @Transactional
-    public LoanApprovalRequestDto submitPayEmiRequest(
-            Long repaymentId,
-            Double paidAmount,
-            Double penaltyAmount,
-            Boolean regularRepayment
-    ) {
-        requireUser();
-        validatePaymentAmounts(paidAmount, penaltyAmount);
+    // =========================================================
+    // REPAYMENT DETAILS FOR APPROVAL POPUP
+    // =========================================================
 
-        RepaymentDto repayment = repaymentService.getById(repaymentId);
+    private void addRepaymentDetails(
+            LoanApprovalRequest request,
+            LoanApprovalRequestDto dto) {
 
-        if ("PAID".equalsIgnoreCase(repayment.getPaymentStatus())) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "This EMI is already paid. Use Edit Payment instead."
+        String requestType = normalizeRequestType(
+                request.getRequestType()
+        );
+
+        if (!"PAY_EMI".equals(requestType)
+                && !"EDIT_EMI".equals(requestType)) {
+            return;
+        }
+
+        JsonNode data = readRequestData(request.getRequestData());
+
+        if (!data.hasNonNull("repaymentId")) {
+            return;
+        }
+
+        Long repaymentId = data.get("repaymentId").asLong();
+
+        RepaymentDto repayment;
+
+        try {
+            repayment = repaymentService.getById(repaymentId);
+        } catch (RuntimeException ex) {
+            return;
+        }
+
+        if (request.getLoanId() == null
+                || repayment.getLoanId() == null
+                || !request.getLoanId().equals(repayment.getLoanId())) {
+            return;
+        }
+
+        Map<String, Object> details = new LinkedHashMap<>();
+
+        double currentPaid = valueOrZero(repayment.getPaidAmount());
+        double scheduledAmount = valueOrZero(
+                repayment.getScheduledAmount()
+        );
+
+        double requestedPaidAmount = data.hasNonNull("paidAmount")
+                ? data.get("paidAmount").asDouble()
+                : 0.0;
+
+        double requestedPenaltyAmount = data.hasNonNull("penaltyAmount")
+                ? data.get("penaltyAmount").asDouble()
+                : 0.0;
+
+        double currentPenalty = valueOrZero(
+                repayment.getPenaltyAmount()
+        );
+
+        double remainingBeforeRequest = Math.max(
+                0.0,
+                scheduledAmount - currentPaid
+        );
+
+        double remainingAfterRequest = Math.max(
+                0.0,
+                scheduledAmount - currentPaid - requestedPaidAmount
+        );
+
+        details.put("repaymentId", repayment.getId());
+        details.put("loanId", repayment.getLoanId());
+        details.put("installmentNo", repayment.getInstallmentNo());
+        details.put("installmentDate", repayment.getInstallmentDate());
+        details.put("scheduledEmi", scheduledAmount);
+        details.put("currentPaidAmount", currentPaid);
+        details.put("requestedPaidAmount", requestedPaidAmount);
+        details.put("currentPenaltyAmount", currentPenalty);
+        details.put("requestedPenaltyAmount", requestedPenaltyAmount);
+        details.put("principalAmount", repayment.getPrincipalAmount());
+        details.put("interestAmount", repayment.getInterestAmount());
+        details.put("remainingBeforeRequest", remainingBeforeRequest);
+        details.put("remainingAfterRequest", remainingAfterRequest);
+        details.put("status", repayment.getPaymentStatus());
+        details.put(
+                "regularRepayment",
+                data.hasNonNull("regularRepayment")
+                        && data.get("regularRepayment").asBoolean()
+        );
+
+        // Matches LoanApprovalRequestDto field name.
+        dto.setRepaymentDetails(details);
+    }
+
+    // =========================================================
+    // DTO MAPPING
+    // =========================================================
+
+    private LoanApprovalRequestDto toDto(LoanApprovalRequest request) {
+
+        LoanApprovalRequestDto dto = new LoanApprovalRequestDto();
+
+        dto.setId(request.getId());
+        dto.setRequestType(request.getRequestType());
+        dto.setLoanId(request.getLoanId());
+        dto.setRequestData(request.getRequestData());
+        dto.setCmrcId(request.getCmrcId());
+        dto.setStatus(request.getStatus());
+        dto.setAdminRemarks(request.getAdminRemarks());
+        dto.setReviewedAt(request.getReviewedAt());
+
+        if (request.getRequestedBy() != null) {
+            dto.setRequestedByUserId(
+                    request.getRequestedBy().getId()
+            );
+            dto.setRequestedByName(
+                    request.getRequestedBy().getName()
             );
         }
 
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("repaymentId", repaymentId);
-        data.put("paidAmount", paidAmount);
-        data.put("penaltyAmount", penaltyAmount);
-        data.put("regularRepayment", regularRepayment);
-
-        LoanApprovalRequest request = new LoanApprovalRequest();
-        request.setRequestType("PAY_EMI");
-        request.setLoanId(repayment.getLoanId());
-        request.setRequestData(toJsonObject(data));
-        request.setRequestedBy(currentUserService.getCurrentUser());
-        request.setCmrcId(currentUserService.getCurrentCmrcId());
-        request.setStatus("PENDING");
-
-        return toDto(requestRepository.save(request));
-    }
-
-    // USER: SUBMIT EDIT PAID EMI REQUEST
-    @Override
-    @Transactional
-    public LoanApprovalRequestDto submitEditPaidEmiRequest(
-            Long repaymentId,
-            Double paidAmount,
-            Double penaltyAmount
-    ) {
-        requireUser();
-        validatePaymentAmounts(paidAmount, penaltyAmount);
-
-        RepaymentDto repayment = repaymentService.getById(repaymentId);
-
-        if (!"PAID".equalsIgnoreCase(repayment.getPaymentStatus())) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Only a fully paid EMI can be edited through this request."
+        if (request.getReviewedBy() != null) {
+            dto.setReviewedByUserId(
+                    request.getReviewedBy().getId()
+            );
+            dto.setReviewedByName(
+                    request.getReviewedBy().getName()
             );
         }
 
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("repaymentId", repaymentId);
-        data.put("paidAmount", paidAmount);
-        data.put("penaltyAmount", penaltyAmount);
+        addRepaymentDetails(request, dto);
 
-        LoanApprovalRequest request = new LoanApprovalRequest();
-        request.setRequestType("EDIT_EMI");
-        request.setLoanId(repayment.getLoanId());
-        request.setRequestData(toJsonObject(data));
-        request.setRequestedBy(currentUserService.getCurrentUser());
-        request.setCmrcId(currentUserService.getCurrentCmrcId());
-        request.setStatus("PENDING");
-
-        return toDto(requestRepository.save(request));
+        return dto;
     }
 
-    // VALIDATION
-    private void validateLoanDto(LoanDto loanDto) {
-        if (loanDto == null || loanDto.getWomanId() == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Woman is required"
-            );
-        }
-    }
+    // =========================================================
+    // AUTHORIZATION
+    // =========================================================
 
-    private void validatePaymentAmounts(
-            Double paidAmount,
-            Double penaltyAmount
-    ) {
-        if (paidAmount == null
-                || penaltyAmount == null
-                || !Double.isFinite(paidAmount)
-                || !Double.isFinite(penaltyAmount)
-                || paidAmount < 0
-                || penaltyAmount < 0) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Payment and penalty amounts must be valid non-negative numbers."
-            );
-        }
-    }
+    private User requireUser() {
 
-    private void requireUser() {
         User user = currentUserService.getCurrentUser();
+
+        if (user == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "User is not authenticated."
+            );
+        }
 
         if (!"USER".equals(normalizeRole(user.getRole()))) {
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
-                    "Only USER accounts can submit approval requests"
+                    "Only USER accounts can submit approval requests."
             );
         }
 
-        if (user.getCmrc() == null) {
+        if (user.getCmrc() == null || user.getCmrc().getId() == null) {
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
-                    "No CMRC is assigned to this user"
+                    "The user is not assigned to a CMRC."
             );
         }
+
+        return user;
     }
 
-    private void requireAdmin() {
+    private User requireAdmin() {
+
         User user = currentUserService.getCurrentUser();
+
+        if (user == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "User is not authenticated."
+            );
+        }
 
         if (!"ADMIN".equals(normalizeRole(user.getRole()))) {
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
-                    "Only ADMIN can review loan requests"
+                    "Only ADMIN accounts can review approval requests."
             );
         }
 
-        if (user.getCmrc() == null) {
+        if (user.getCmrc() == null || user.getCmrc().getId() == null) {
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
-                    "No CMRC is assigned to this admin"
+                    "The admin is not assigned to a CMRC."
             );
         }
+
+        return user;
     }
 
     private String normalizeRole(String role) {
+
         if (role == null) {
             return "";
         }
 
         return role.trim()
                 .toUpperCase(Locale.ROOT)
-                .replaceFirst("^ROLE_", "");
+                .replace("ROLE_", "");
     }
 
+    private String normalizeRequestType(String requestType) {
+
+        if (requestType == null) {
+            return "";
+        }
+
+        return requestType.trim().toUpperCase(Locale.ROOT);
+    }
+
+    // =========================================================
+    // VALIDATION
+    // =========================================================
+
+    private void validateLoanDto(LoanDto loanDto) {
+
+        if (loanDto == null || loanDto.getWomanId() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Woman ID is required."
+            );
+        }
+    }
+
+    private void validatePaymentAmounts(
+            Double paidAmount,
+            Double penaltyAmount) {
+
+        if (paidAmount == null || paidAmount <= 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Paid amount must be greater than zero."
+            );
+        }
+
+        if (penaltyAmount != null && penaltyAmount < 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Penalty amount cannot be negative."
+            );
+        }
+    }
+
+    private double valueOrZero(Double value) {
+        return value != null ? value : 0.0;
+    }
+
+    // =========================================================
     // JSON HELPERS
+    // =========================================================
+
     private ObjectMapper configuredMapper() {
+
         ObjectMapper mapper = objectMapper.copy();
+
         mapper.registerModule(new JavaTimeModule());
         mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
         return mapper;
     }
 
     private String toJson(LoanDto loanDto) {
+
         try {
             return configuredMapper().writeValueAsString(loanDto);
-        } catch (JsonProcessingException e) {
+        } catch (JsonProcessingException ex) {
             throw new ResponseStatusException(
-                    HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Could not serialize loan request data: "
-                            + e.getOriginalMessage(),
-                    e
+                    HttpStatus.BAD_REQUEST,
+                    "Unable to serialize loan request data."
             );
         }
     }
 
-    private String toJsonObject(Object data) {
+    private String toJsonObject(Map<String, Object> data) {
+
         try {
             return configuredMapper().writeValueAsString(data);
-        } catch (JsonProcessingException e) {
+        } catch (JsonProcessingException ex) {
             throw new ResponseStatusException(
-                    HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Could not serialize repayment approval request.",
-                    e
+                    HttpStatus.BAD_REQUEST,
+                    "Unable to serialize approval request data."
             );
         }
     }
 
-    private JsonNode readRequestData(String json) {
+    private JsonNode readRequestData(String requestData) {
+
         try {
-            return configuredMapper().readTree(json);
-        } catch (JsonProcessingException e) {
+            if (requestData == null || requestData.isBlank()) {
+                return configuredMapper().createObjectNode();
+            }
+
+            return configuredMapper().readTree(requestData);
+        } catch (JsonProcessingException ex) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Invalid approval request data.",
-                    e
+                    "Invalid approval request data."
             );
         }
     }
 
-    // ENTITY -> DTO
-    private LoanApprovalRequestDto toDto(LoanApprovalRequest request) {
-        LoanApprovalRequestDto dto = new LoanApprovalRequestDto();
+    private LoanDto readLoanDto(String requestData) {
 
-        dto.setId(request.getId());
-        dto.setRequestType(request.getRequestType());
-        dto.setStatus(request.getStatus());
-        dto.setLoanId(request.getLoanId());
-        dto.setRequestData(request.getRequestData());
-        dto.setCmrcId(request.getCmrcId());
-        dto.setCreatedAt(request.getCreatedAt());
-        dto.setReviewedAt(request.getReviewedAt());
-        dto.setAdminRemarks(request.getAdminRemarks());
-
-        if (request.getRequestedBy() != null) {
-            dto.setRequestedByUserId(request.getRequestedBy().getId());
-            dto.setRequestedByName(request.getRequestedBy().getName());
-        }
-
-        if (request.getReviewedBy() != null) {
-            dto.setReviewedByUserId(request.getReviewedBy().getId());
-            dto.setReviewedByName(request.getReviewedBy().getName());
-        }
-
-        // IMPORTANT FIX:
-        // Populate repaymentDetails and linkedLoanDetails.
-        addRepaymentDetails(request, dto);
-
-        return dto;
-    }
-
-    // REPAYMENT + LINKED LOAN DETAILS
-    private void addRepaymentDetails(
-            LoanApprovalRequest request,
-            LoanApprovalRequestDto dto
-    ) {
-        String type = request.getRequestType() == null
-                ? ""
-                : request.getRequestType()
-                .trim()
-                .toUpperCase(Locale.ROOT);
-
-        if (!"PAY_EMI".equals(type) && !"EDIT_EMI".equals(type)) {
-            return;
-        }
-
-        JsonNode data = readRequestData(request.getRequestData());
-        long repaymentId = data.path("repaymentId").asLong(-1);
-
-        if (repaymentId <= 0) {
-            return;
-        }
-
-        RepaymentDto repayment = repaymentService.getById(repaymentId);
-
-        if (repayment.getLoanId() == null
-                || !repayment.getLoanId().equals(request.getLoanId())) {
+        try {
+            return configuredMapper().readValue(
+                    requestData,
+                    new TypeReference<LoanDto>() {}
+            );
+        } catch (JsonProcessingException ex) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Repayment does not belong to this approval request."
+                    "Invalid loan request data."
             );
-        }
-
-        Map<String, Object> details = new LinkedHashMap<>();
-
-        // Existing repayment values from the database
-        details.put("repaymentId", repayment.getId());
-        details.put("loanId", repayment.getLoanId());
-        details.put("installmentNo", repayment.getInstallmentNo());
-        details.put("installmentDate", repayment.getInstallmentDate());
-        details.put("repaymentDate", repayment.getRepaymentDate());
-        details.put("scheduledAmount", repayment.getScheduledAmount());
-        details.put("currentPaidAmount", repayment.getPaidAmount());
-        details.put("principalAmount", repayment.getPrincipalAmount());
-        details.put("interestAmount", repayment.getInterestAmount());
-        details.put("currentPenaltyAmount", repayment.getPenaltyAmount());
-        details.put("paymentStatus", repayment.getPaymentStatus());
-        details.put("regularRepayment", repayment.getRegularRepayment());
-        details.put("remark", repayment.getRemark());
-
-        // Requested values from requestData
-        double requestedPaidAmount =
-                data.path("paidAmount").asDouble(0);
-
-        double requestedPenaltyAmount =
-                data.path("penaltyAmount").asDouble(0);
-
-        details.put("requestedPaidAmount", requestedPaidAmount);
-        details.put("requestedPenaltyAmount", requestedPenaltyAmount);
-
-        double scheduledAmount = repayment.getScheduledAmount() == null
-                ? 0.0
-                : repayment.getScheduledAmount();
-
-        double currentPaidAmount = repayment.getPaidAmount() == null
-                ? 0.0
-                : repayment.getPaidAmount();
-
-        details.put(
-                "remainingBeforeRequest",
-                Math.max(0.0, scheduledAmount - currentPaidAmount)
-        );
-
-        details.put(
-                "remainingAfterRequest",
-                Math.max(0.0, scheduledAmount - requestedPaidAmount)
-        );
-
-        details.put(
-                "requestedRegularRepayment",
-                data.hasNonNull("regularRepayment")
-                        ? data.get("regularRepayment").asBoolean()
-                        : repayment.getRegularRepayment()
-        );
-
-        dto.setRepaymentDetails(details);
-
-        // Linked loan information
-        if (request.getLoanId() != null) {
-            LoanDto loan = loanService.getById(request.getLoanId());
-
-            Map<String, Object> loanDetails = configuredMapper()
-                    .convertValue(
-                            loan,
-                            new TypeReference<Map<String, Object>>() {}
-                    );
-
-            dto.setLinkedLoanDetails(loanDetails);
         }
     }
 }

@@ -72,6 +72,14 @@ public class AuthService {
                 || request.getTaluka().trim().isEmpty()) {
             throw new RuntimeException("Taluka is required");
         }
+        if (request.getAccountNo() == null
+                || request.getAccountNo().trim().isEmpty()) {
+            throw new RuntimeException("Account Number is required");
+        }
+
+        if (request.getAccountOpeningDate() == null) {
+            throw new RuntimeException("Account Opening Date is required");
+        }
 
         // Find existing CMRC or create a new one
         Cmrc cmrc = cmrcRepository
@@ -109,6 +117,8 @@ public class AuthService {
         user.setDistrict(request.getDistrict().trim());
         user.setTaluka(request.getTaluka().trim());
 
+        user.setAccountNo(request.getAccountNo().trim());
+        user.setAccountOpeningDate(request.getAccountOpeningDate());
         // Link user to CMRC
         user.setCmrc(cmrc);
 

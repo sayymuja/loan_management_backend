@@ -1,7 +1,8 @@
-package com.example.loan_management.service;
+        package com.example.loan_management.service;
 
 import com.example.loan_management.auth.service.CurrentUserService;
 import com.example.loan_management.dto.LoanDto;
+import com.example.loan_management.entity.FundTransaction;
 import com.example.loan_management.entity.Group;
 import com.example.loan_management.entity.Loan;
 import com.example.loan_management.entity.Repayment;
@@ -12,16 +13,21 @@ import com.example.loan_management.repository.LoanRepository;
 import com.example.loan_management.repository.RepaymentRepository;
 import com.example.loan_management.repository.VoAlfRepository;
 import com.example.loan_management.repository.WomenRepository;
-import jakarta.transaction.Transactional;
+
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(rollbackFor = Exception.class)
 public class LoanServiceImpl implements LoanService {
 
     private final LoanRepository loanRepository;
@@ -29,390 +35,344 @@ public class LoanServiceImpl implements LoanService {
     private final VoAlfRepository voAlfRepository;
     private final RepaymentRepository repaymentRepository;
     private final ClScheduleRepository clScheduleRepository;
-
+    private final FundManagementService fundManagementService;
     private final LoanImageService loanImageService;
-
     private final ModelMapper modelMapper;
-
     private final CurrentUserService currentUserService;
-
 
     // =========================================================
     // CURRENT CMRC
     // =========================================================
 
     private Long getCurrentCmrcId() {
-
         return currentUserService.getCurrentCmrcId();
     }
 
-
     // =========================================================
     // VALIDATE WOMAN OWNERSHIP
-    //
-    // Logged-in User
-    //      ↓
-    //     CMRC
-    //      ↓
-    //    Group
-    //      ↓
-    //    Woman
     // =========================================================
 
     private Women getAuthorizedWoman(Long womanId) {
 
         if (womanId == null) {
-            throw new RuntimeException(
-                    "Woman ID is required"
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Woman ID is required."
             );
         }
 
-        Women woman =
-                womenRepository.findById(womanId)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Woman not found with ID: "
-                                                + womanId
-                                )
-                        );
+        Women woman = womenRepository.findById(womanId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Woman not found with ID: " + womanId
+                ));
 
         if (woman.getGroup() == null) {
-
-            throw new RuntimeException(
-                    "Group not found for selected woman"
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Group not found for selected woman."
             );
         }
 
         Group group = woman.getGroup();
+        Long currentCmrcId = getCurrentCmrcId();
 
-        Long currentCmrcId =
-                getCurrentCmrcId();
+        if (currentCmrcId == null
+                || group.getCmrcId() == null
+                || !currentCmrcId.equals(group.getCmrcId())) {
 
-        // -----------------------------------------------------
-        // GROUP MUST BELONG TO CURRENT CMRC
-        // -----------------------------------------------------
-
-        if (group.getCmrcId() == null ||
-                !currentCmrcId.equals(
-                        group.getCmrcId()
-                )) {
-
-            throw new RuntimeException(
-                    "Access denied. Woman does not belong to your CMRC"
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Access denied. Woman does not belong to your CMRC."
             );
         }
-
-        // -----------------------------------------------------
-        // GROUP MUST HAVE VO / ALF
-        // -----------------------------------------------------
 
         if (group.getVoAlfId() == null) {
-
-            throw new RuntimeException(
-                    "VO / ALF ID not found for selected group"
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "VO / ALF ID not found for selected group."
             );
         }
 
-        // -----------------------------------------------------
-        // VERIFY VO / ALF ALSO BELONGS TO CURRENT CMRC
-        // -----------------------------------------------------
-
-        getAuthorizedVoAlf(
-                group.getVoAlfId()
-        );
+        getAuthorizedVoAlf(group.getVoAlfId());
 
         return woman;
     }
 
-
     // =========================================================
     // VALIDATE VO / ALF OWNERSHIP
-    //
-    // Logged-in User
-    //      ↓
-    //     CMRC
-    //      ↓
-    //   VO / ALF
     // =========================================================
 
     private VoAlf getAuthorizedVoAlf(Long voAlfId) {
 
         if (voAlfId == null) {
-
-            throw new RuntimeException(
-                    "VO / ALF ID is required"
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "VO / ALF ID is required."
             );
         }
 
-        VoAlf voAlf =
-                voAlfRepository.findById(voAlfId)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "VO / ALF not found with ID: "
-                                                + voAlfId
-                                )
-                        );
+        VoAlf voAlf = voAlfRepository.findById(voAlfId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "VO / ALF not found with ID: " + voAlfId
+                ));
 
-        Long currentCmrcId =
-                getCurrentCmrcId();
+        Long currentCmrcId = getCurrentCmrcId();
 
-        if (voAlf.getCmrc() == null ||
-                !currentCmrcId.equals(
-                        voAlf.getCmrc().getId()
-                )) {
+        if (currentCmrcId == null
+                || voAlf.getCmrc() == null
+                || !currentCmrcId.equals(voAlf.getCmrc().getId())) {
 
-            throw new RuntimeException(
-                    "Access denied for this VO / ALF"
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Access denied for this VO / ALF."
             );
         }
 
         return voAlf;
     }
 
-
     // =========================================================
     // VALIDATE LOAN OWNERSHIP
-    //
-    // Logged-in User
-    //      ↓
-    //     CMRC
-    //      ↓
-    //    Group
-    //      ↓
-    //    Woman
-    //      ↓
-    //    Loan
     // =========================================================
 
     private Loan getAuthorizedLoan(Long loanId) {
 
-        Loan loan =
-                loanRepository.findById(loanId)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Loan not found with ID: "
-                                                + loanId
-                                )
-                        );
-
-        if (loan.getWoman() == null) {
-
-            throw new RuntimeException(
-                    "Woman not found for this loan"
+        if (loanId == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Loan ID is required."
             );
         }
 
-        Women woman = loan.getWoman();
+        Loan loan = loanRepository.findById(loanId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Loan not found with ID: " + loanId
+                ));
 
-        if (woman.getGroup() == null) {
+        if (loan.getWoman() == null
+                || loan.getWoman().getGroup() == null) {
 
-            throw new RuntimeException(
-                    "Group not found for this loan"
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Woman or group not found for this loan."
             );
         }
 
-        Group group = woman.getGroup();
+        Group group = loan.getWoman().getGroup();
+        Long currentCmrcId = getCurrentCmrcId();
 
-        Long currentCmrcId =
-                getCurrentCmrcId();
+        if (currentCmrcId == null
+                || group.getCmrcId() == null
+                || !currentCmrcId.equals(group.getCmrcId())) {
 
-        // -----------------------------------------------------
-        // GROUP -> CMRC VALIDATION
-        // -----------------------------------------------------
-
-        if (group.getCmrcId() == null ||
-                !currentCmrcId.equals(
-                        group.getCmrcId()
-                )) {
-
-            throw new RuntimeException(
-                    "Access denied for this loan"
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Access denied for this loan."
             );
         }
-
-        // -----------------------------------------------------
-        // GROUP -> VO / ALF VALIDATION
-        // -----------------------------------------------------
 
         if (group.getVoAlfId() == null) {
-
-            throw new RuntimeException(
-                    "VO / ALF not found for this loan"
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "VO / ALF not found for this loan."
             );
         }
 
-        getAuthorizedVoAlf(
-                group.getVoAlfId()
-        );
+        getAuthorizedVoAlf(group.getVoAlfId());
 
-        // -----------------------------------------------------
-        // LOAN -> VO / ALF CONSISTENCY
-        // -----------------------------------------------------
+        if (loan.getVoAlfId() == null
+                || !group.getVoAlfId().equals(loan.getVoAlfId())) {
 
-        if (loan.getVoAlfId() == null ||
-                !group.getVoAlfId().equals(
-                        loan.getVoAlfId()
-                )) {
-
-            throw new RuntimeException(
-                    "Loan VO / ALF does not match woman's group"
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Loan VO / ALF does not match the woman's group."
             );
         }
 
         return loan;
     }
 
-
     // =========================================================
-    // CREATE
+    // CREATE LOAN + SINGLE-BALANCE DISBURSEMENT
     // =========================================================
 
     @Override
     public LoanDto create(LoanDto loanDto) {
 
-        // -----------------------------------------------------
-        // Validate Woman + CMRC + Group + VO/ALF
-        // -----------------------------------------------------
+        if (loanDto == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Loan details are required."
+            );
+        }
 
-        Women woman =
-                getAuthorizedWoman(
-                        loanDto.getWomanId()
-                );
+        // Validate borrower and derive hierarchy from database.
+        Women woman = getAuthorizedWoman(loanDto.getWomanId());
+        Group group = woman.getGroup();
 
-        Group group =
-                woman.getGroup();
+        // Validate loan inputs.
+        validateLoanDetails(loanDto);
 
-
-        // =====================================================
-        // MAP DTO -> ENTITY
-        // =====================================================
-
-        Loan loan =
-                modelMapper.map(
-                        loanDto,
-                        Loan.class
-                );
-
-
-        // =====================================================
-        // HIERARCHY
-        // =====================================================
-
-        // Woman
-        loan.setWoman(woman);
-
-        // VO / ALF
-        // NEVER TRUST FRONTEND VO/ALF ID
-        loan.setVoAlfId(
-                group.getVoAlfId()
-        );
-
-
-        // =====================================================
-        // LOAN AMOUNT
-        // =====================================================
-
-        loan.setSanctionedAmount(
-                loanDto.getSanctionedAmount()
-        );
-
-        loan.setProcessingFee(
+        double disbursedAmount = calculateDisbursedAmount(
+                loanDto.getSanctionedAmount(),
                 loanDto.getProcessingFee()
         );
 
+        if (disbursedAmount <= 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Disbursed loan amount must be greater than zero."
+            );
+        }
 
-        // -----------------------------------------------------
-        // Calculate Disbursed / Loan Amount
-        // -----------------------------------------------------
+        // Build entity using trusted database relationships.
+        Loan loan = modelMapper.map(loanDto, Loan.class);
 
-        loan.setLoanAmount(
-                calculateDisbursedAmount(
-                        loanDto.getSanctionedAmount(),
-                        loanDto.getProcessingFee()
-                )
-        );
+        loan.setWoman(woman);
+        loan.setVoAlfId(group.getVoAlfId());
 
+        loan.setSanctionedAmount(loanDto.getSanctionedAmount());
+        loan.setProcessingFee(loanDto.getProcessingFee());
+        loan.setLoanAmount(disbursedAmount);
 
-        // =====================================================
-        // LOAN DETAILS
-        // =====================================================
-
-        loan.setLoanPurpose(
-                loanDto.getLoanPurpose()
-        );
-
-        loan.setLoanGivenDate(
-                loanDto.getLoanGivenDate()
-        );
-
-
-        // =====================================================
-        // REPAYMENT DETAILS
-        // =====================================================
+        loan.setLoanPurpose(loanDto.getLoanPurpose());
+        loan.setLoanGivenDate(loanDto.getLoanGivenDate());
 
         loan.setRepaymentPeriodMonths(
                 loanDto.getRepaymentPeriodMonths()
         );
 
-        loan.setInterestRate(
-                loanDto.getInterestRate()
-        );
-
-        loan.setInterestType(
-                loanDto.getInterestType()
-        );
-
-
-        // =====================================================
-        // EMI
-        // =====================================================
+        loan.setInterestRate(loanDto.getInterestRate());
+        loan.setInterestType(loanDto.getInterestType());
 
         loan.setMonthlyEmi(
                 calculateEmi(
-                        loan.getLoanAmount(),
-                        loan.getInterestRate(),
-                        loan.getRepaymentPeriodMonths(),
-                        loan.getInterestType()
+                        disbursedAmount,
+                        loanDto.getInterestRate(),
+                        loanDto.getRepaymentPeriodMonths(),
+                        loanDto.getInterestType()
                 )
         );
 
-
-        // =====================================================
-        // STATUS
-        // =====================================================
-
         loan.setLoanStatus(
                 loanDto.getLoanStatus() != null
+                        && !loanDto.getLoanStatus().isBlank()
                         ? loanDto.getLoanStatus()
                         : "ACTIVE"
         );
 
+        // Save loan first.
+        Loan savedLoan = loanRepository.save(loan);
 
-        // =====================================================
-        // SAVE
-        // =====================================================
-
-        Loan savedLoan =
-                loanRepository.save(loan);
-
-
-        // =====================================================
-        // ENTITY -> DTO
-        // =====================================================
+        // Record disbursement as a PAYMENT against the single balance.
+        // No Cash/Bank payment mode is used.
+        // Fund service validates sufficient funds.
+        // CMRC totalFund is not changed here.
+        fundManagementService.recordInternalTransaction(
+                savedLoan.getVoAlfId(),
+                FundTransaction.TransactionType.PAYMENT,
+                FundTransaction.FundCategory.LOAN_DISBURSEMENT,
+                BigDecimal.valueOf(savedLoan.getLoanAmount()),
+                savedLoan.getLoanGivenDate(),
+                "Loan disbursement for loan ID " + savedLoan.getId(),
+                "LOAN",
+                savedLoan.getId(),
+                "LOAN_DISBURSEMENT_" + savedLoan.getId()
+        );
 
         return mapLoanToDto(savedLoan);
     }
 
+    // =========================================================
+    // VALIDATE LOAN DETAILS
+    // =========================================================
+
+    private void validateLoanDetails(LoanDto loanDto) {
+
+        if (loanDto.getSanctionedAmount() == null
+                || loanDto.getSanctionedAmount() <= 0) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Sanctioned amount must be greater than zero."
+            );
+        }
+
+        if (loanDto.getProcessingFee() == null
+                || loanDto.getProcessingFee() < 0) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Processing fee cannot be negative."
+            );
+        }
+
+        if (loanDto.getProcessingFee()
+                >= loanDto.getSanctionedAmount()) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Processing fee must be less than sanctioned amount."
+            );
+        }
+
+        if (loanDto.getLoanGivenDate() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Loan given date is required."
+            );
+        }
+
+        if (loanDto.getRepaymentPeriodMonths() == null
+                || loanDto.getRepaymentPeriodMonths() <= 0) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Repayment period must be greater than zero."
+            );
+        }
+
+        if (loanDto.getInterestRate() == null
+                || loanDto.getInterestRate() < 0) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Interest rate cannot be negative."
+            );
+        }
+
+        String interestType = loanDto.getInterestType();
+
+        if (interestType == null
+                || (!"FLAT".equalsIgnoreCase(interestType)
+                && !"REDUCING".equalsIgnoreCase(interestType))) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Interest type must be FLAT or REDUCING."
+            );
+        }
+    }
 
     // =========================================================
-    // GET ALL
+    // GET ALL LOANS
     // =========================================================
 
     @Override
+    @Transactional(readOnly = true)
     public List<LoanDto> getAll() {
 
-        Long currentCmrcId =
-                getCurrentCmrcId();
+        Long currentCmrcId = getCurrentCmrcId();
+
+        if (currentCmrcId == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "CMRC is not associated with the current user."
+            );
+        }
 
         return loanRepository
                 .findByWoman_Group_CmrcId(currentCmrcId)
@@ -421,205 +381,136 @@ public class LoanServiceImpl implements LoanService {
                 .toList();
     }
 
-
     // =========================================================
-    // GET BY ID
+    // GET LOAN BY ID
     // =========================================================
 
     @Override
+    @Transactional(readOnly = true)
     public LoanDto getById(Long id) {
 
-        Loan loan =
-                getAuthorizedLoan(id);
+        Loan loan = getAuthorizedLoan(id);
 
         return mapLoanToDto(loan);
     }
 
-
     // =========================================================
-    // UPDATE
+    // UPDATE LOAN
+    // Does not create a second disbursement transaction.
     // =========================================================
 
     @Override
-    public LoanDto update(
-            Long id,
-            LoanDto loanDto
-    ) {
+    public LoanDto update(Long id, LoanDto loanDto) {
 
-        // -----------------------------------------------------
-        // Existing Loan must belong to current CMRC
-        // -----------------------------------------------------
+        Loan loan = getAuthorizedLoan(id);
 
-        Loan loan =
-                getAuthorizedLoan(id);
+        if (loanDto == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Loan details are required."
+            );
+        }
 
+        Women woman = getAuthorizedWoman(loanDto.getWomanId());
 
-        // -----------------------------------------------------
-        // New Woman must also belong to current CMRC
-        // -----------------------------------------------------
+        validateLoanDetails(loanDto);
 
-        Women woman =
-                getAuthorizedWoman(
-                        loanDto.getWomanId()
-                );
-
-        Group group =
-                woman.getGroup();
-
-
-        // =====================================================
-        // HIERARCHY
-        // =====================================================
-
-        loan.setWoman(woman);
-
-        // NEVER TRUST FRONTEND VO/ALF ID
-        loan.setVoAlfId(
-                group.getVoAlfId()
-        );
-
-
-        // =====================================================
-        // LOAN AMOUNT
-        // =====================================================
-
-        loan.setSanctionedAmount(
-                loanDto.getSanctionedAmount()
-        );
-
-        loan.setProcessingFee(
+        double disbursedAmount = calculateDisbursedAmount(
+                loanDto.getSanctionedAmount(),
                 loanDto.getProcessingFee()
         );
 
+        if (disbursedAmount <= 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Disbursed loan amount must be greater than zero."
+            );
+        }
 
-        // -----------------------------------------------------
-        // Calculate Disbursed Amount
-        // -----------------------------------------------------
+        // Preserve trusted hierarchy.
+        loan.setWoman(woman);
+        loan.setVoAlfId(woman.getGroup().getVoAlfId());
 
-        loan.setLoanAmount(
-                calculateDisbursedAmount(
-                        loanDto.getSanctionedAmount(),
-                        loanDto.getProcessingFee()
-                )
-        );
+        loan.setSanctionedAmount(loanDto.getSanctionedAmount());
+        loan.setProcessingFee(loanDto.getProcessingFee());
+        loan.setLoanAmount(disbursedAmount);
 
-
-        // =====================================================
-        // LOAN DETAILS
-        // =====================================================
-
-        loan.setLoanPurpose(
-                loanDto.getLoanPurpose()
-        );
-
-        loan.setLoanGivenDate(
-                loanDto.getLoanGivenDate()
-        );
-
-
-        // =====================================================
-        // REPAYMENT DETAILS
-        // =====================================================
+        loan.setLoanPurpose(loanDto.getLoanPurpose());
+        loan.setLoanGivenDate(loanDto.getLoanGivenDate());
 
         loan.setRepaymentPeriodMonths(
                 loanDto.getRepaymentPeriodMonths()
         );
 
-        loan.setInterestRate(
-                loanDto.getInterestRate()
-        );
-
-        loan.setInterestType(
-                loanDto.getInterestType()
-        );
-
-
-        // =====================================================
-        // EMI
-        // =====================================================
+        loan.setInterestRate(loanDto.getInterestRate());
+        loan.setInterestType(loanDto.getInterestType());
 
         loan.setMonthlyEmi(
                 calculateEmi(
-                        loan.getLoanAmount(),
-                        loan.getInterestRate(),
-                        loan.getRepaymentPeriodMonths(),
-                        loan.getInterestType()
+                        disbursedAmount,
+                        loanDto.getInterestRate(),
+                        loanDto.getRepaymentPeriodMonths(),
+                        loanDto.getInterestType()
                 )
         );
 
-
-        // =====================================================
-        // STATUS
-        // =====================================================
-
-        if (loanDto.getLoanStatus() != null) {
-
-            loan.setLoanStatus(
-                    loanDto.getLoanStatus()
-            );
+        if (loanDto.getLoanStatus() != null
+                && !loanDto.getLoanStatus().isBlank()) {
+            loan.setLoanStatus(loanDto.getLoanStatus());
         }
 
+        // Do not create another disbursement entry here.
+        // Do not change the CMRC totalFund.
+        // Financial changes to an already-disbursed loan should
+        // use a separately approved adjustment workflow.
 
-        // =====================================================
-        // SAVE
-        // =====================================================
-
-        Loan updatedLoan =
-                loanRepository.save(loan);
-
+        Loan updatedLoan = loanRepository.save(loan);
 
         return mapLoanToDto(updatedLoan);
     }
 
-
     // =========================================================
-    // DELETE
+    // DELETE LOAN
     // =========================================================
 
-    @Transactional
     @Override
     public void delete(Long id) {
 
-        // -----------------------------------------------------
-        // IMPORTANT:
-        // First verify Loan belongs to current CMRC.
-        // -----------------------------------------------------
+        Loan loan = getAuthorizedLoan(id);
 
-        Loan loan =
-                getAuthorizedLoan(id);
+        // Do not silently delete a disbursed loan's ledger entry.
+        // A disbursed loan requires a proper reversal/refund workflow.
+        FundTransaction disbursement =
+                fundManagementService.getTransactionByPaymentEventId(
+                        "LOAN_DISBURSEMENT_" + id
+                );
 
+        if (disbursement != null) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "This loan has a disbursement ledger entry. "
+                            + "Process an approved reversal before deleting it."
+            );
+        }
 
-        // 1. Delete CL Schedule
         clScheduleRepository.deleteAll(
                 clScheduleRepository.findByLoanId(id)
         );
 
-
-        // 2. Delete Repayment
         repaymentRepository.deleteByLoanId(id);
 
-
-        // 3. Delete Loan Images
         loanImageService.deleteByLoanId(id);
 
-
-        // 4. Finally delete Loan
         loanRepository.delete(loan);
     }
-
 
     // =========================================================
     // GET LOANS BY WOMAN
     // =========================================================
 
     @Override
-    public List<LoanDto> getByWomanId(
-            Long womanId
-    ) {
-
-        // -----------------------------------------------------
-        // Woman must belong to current CMRC
-        // -----------------------------------------------------
+    @Transactional(readOnly = true)
+    public List<LoanDto> getByWomanId(Long womanId) {
 
         getAuthorizedWoman(womanId);
 
@@ -630,215 +521,123 @@ public class LoanServiceImpl implements LoanService {
                 .toList();
     }
 
-
     // =========================================================
-    // ENTITY -> DTO
+    // ENTITY TO DTO
     // =========================================================
 
     private LoanDto mapLoanToDto(Loan loan) {
 
         LoanDto dto = new LoanDto();
 
-
-        // =====================================================
-        // LOAN BASIC DETAILS
-        // =====================================================
-
         dto.setId(loan.getId());
 
-        dto.setSanctionedAmount(
-                loan.getSanctionedAmount()
-        );
+        dto.setSanctionedAmount(loan.getSanctionedAmount());
+        dto.setProcessingFee(loan.getProcessingFee());
+        dto.setLoanAmount(loan.getLoanAmount());
 
-        dto.setProcessingFee(
-                loan.getProcessingFee()
-        );
-
-        dto.setLoanAmount(
-                loan.getLoanAmount()
-        );
-
-        dto.setLoanPurpose(
-                loan.getLoanPurpose()
-        );
-
-        dto.setLoanGivenDate(
-                loan.getLoanGivenDate()
-        );
+        dto.setLoanPurpose(loan.getLoanPurpose());
+        dto.setLoanGivenDate(loan.getLoanGivenDate());
 
         dto.setRepaymentPeriodMonths(
                 loan.getRepaymentPeriodMonths()
         );
 
-        dto.setInterestRate(
-                loan.getInterestRate()
-        );
+        dto.setInterestRate(loan.getInterestRate());
+        dto.setInterestType(loan.getInterestType());
+        dto.setMonthlyEmi(loan.getMonthlyEmi());
+        dto.setLoanStatus(loan.getLoanStatus());
 
-        dto.setInterestType(
-                loan.getInterestType()
-        );
+        // No paymentMode field.
 
-        dto.setMonthlyEmi(
-                loan.getMonthlyEmi()
-        );
-
-        dto.setLoanStatus(
-                loan.getLoanStatus()
-        );
-
-
-        // =====================================================
-        // VO / ALF ID
-        // =====================================================
-
-        dto.setVoAlfId(
-                loan.getVoAlfId()
-        );
-
-
-        // =====================================================
-        // WOMAN
-        // =====================================================
+        dto.setVoAlfId(loan.getVoAlfId());
 
         if (loan.getWoman() != null) {
 
-            Women woman =
-                    loan.getWoman();
+            Women woman = loan.getWoman();
 
-            dto.setWomanId(
-                    woman.getId()
-            );
-
-            dto.setWomanName(
-                    woman.getWomanName()
-            );
-
-
-            // =================================================
-            // GROUP
-            // =================================================
+            dto.setWomanId(woman.getId());
+            dto.setWomanName(woman.getWomanName());
 
             if (woman.getGroup() != null) {
 
-                Group group =
-                        woman.getGroup();
+                Group group = woman.getGroup();
 
-                dto.setGroupId(
-                        group.getId()
-                );
+                dto.setGroupId(group.getId());
+                dto.setGroupName(group.getGroupName());
+                dto.setVillageName(group.getVillageName());
+                dto.setCmrcId(group.getCmrcId());
+                dto.setVoAlfId(group.getVoAlfId());
 
-                dto.setGroupName(
-                        group.getGroupName()
-                );
+                if (group.getVoAlfId() != null) {
+                    voAlfRepository.findById(group.getVoAlfId())
+                            .ifPresent(voAlf -> {
+                                dto.setVoAlfName(
+                                        voAlf.getVoAlfName()
+                                );
 
-                dto.setVillageName(
-                        group.getVillageName()
-                );
+                                if (voAlf.getCmrc() != null) {
+                                    dto.setCmrcId(
+                                            voAlf.getCmrc().getId()
+                                    );
 
-
-                // ---------------------------------------------
-                // CMRC
-                // ---------------------------------------------
-
-                dto.setCmrcId(
-                        group.getCmrcId()
-                );
-
-
-                // ---------------------------------------------
-                // VO / ALF
-                // ---------------------------------------------
-
-                dto.setVoAlfId(
-                        group.getVoAlfId()
-                );
+                                    dto.setCmrcName(
+                                            voAlf.getCmrc().getCmrcName()
+                                    );
+                                }
+                            });
+                }
             }
         }
 
-
-        // =====================================================
-        // TOTAL INTEREST RECEIVED
-        // =====================================================
-
         dto.setTotalInterestReceived(
-                calculateTotalInterestReceived(
-                        loan.getId()
-                )
+                calculateTotalInterestReceived(loan.getId())
         );
-
 
         return dto;
     }
 
-
     // =========================================================
-    // CALCULATE DISBURSED / LOAN AMOUNT
+    // CALCULATE DISBURSED AMOUNT
     // =========================================================
 
     private Double calculateDisbursedAmount(
             Double sanctionedAmount,
-            Double processingFee
-    ) {
+            Double processingFee) {
 
-        double sanctioned =
-                sanctionedAmount != null
-                        ? sanctionedAmount
-                        : 0.0;
+        double sanctioned = sanctionedAmount != null
+                ? sanctionedAmount
+                : 0.0;
 
-        double fee =
-                processingFee != null
-                        ? processingFee
-                        : 0.0;
+        double fee = processingFee != null
+                ? processingFee
+                : 0.0;
 
-
-        if (sanctioned <= 0) {
-            return 0.0;
-        }
-
-
-        return Math.max(
-                sanctioned - fee,
-                0.0
-        );
+        return Math.max(sanctioned - fee, 0.0);
     }
-
 
     // =========================================================
     // TOTAL INTEREST RECEIVED
     // =========================================================
 
-    private BigDecimal calculateTotalInterestReceived(
-            Long loanId
-    ) {
+    private BigDecimal calculateTotalInterestReceived(Long loanId) {
 
         if (loanId == null) {
             return BigDecimal.ZERO;
         }
 
-
         List<Repayment> repayments =
-                repaymentRepository
-                        .findByLoanId(loanId);
-
+                repaymentRepository.findByLoanId(loanId);
 
         return repayments.stream()
-
-                .map(
-                        repayment ->
-                                repayment.getInterestAmount() != null
-                                        ? BigDecimal.valueOf(
-                                        repayment
-                                                .getInterestAmount()
-                                )
-                                        : BigDecimal.ZERO
+                .map(repayment ->
+                        repayment.getInterestAmount() != null
+                                ? BigDecimal.valueOf(
+                                repayment.getInterestAmount()
+                        )
+                                : BigDecimal.ZERO
                 )
-
-                .reduce(
-                        BigDecimal.ZERO,
-                        BigDecimal::add
-                );
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
-
 
     // =========================================================
     // CALCULATE EMI
@@ -848,79 +647,33 @@ public class LoanServiceImpl implements LoanService {
             Double principal,
             Double annualRate,
             Integer months,
-            String interestType
-    ) {
+            String interestType) {
 
-        if (
-                principal == null
-                        || annualRate == null
-                        || months == null
-                        || months <= 0
-        ) {
-
+        if (principal == null
+                || annualRate == null
+                || months == null
+                || months <= 0) {
             return 0.0;
         }
 
-
-        // =====================================================
         // FLAT INTEREST
-        // =====================================================
-
-        if (
-                "FLAT".equalsIgnoreCase(
-                        interestType
-                )
-        ) {
+        if ("FLAT".equalsIgnoreCase(interestType)) {
 
             double totalInterest =
-                    principal
-                            * annualRate
-                            / 100
-                            * months
-                            / 12;
+                    principal * annualRate / 100.0 * months / 12.0;
 
-            return (
-                    principal
-                            + totalInterest
-            ) / months;
+            return (principal + totalInterest) / months;
         }
 
-
-        // =====================================================
         // REDUCING BALANCE
-        // =====================================================
+        double monthlyRate = annualRate / 12.0 / 100.0;
 
-        double monthlyRate =
-                annualRate
-                        / 12
-                        / 100;
-
-
-        // -----------------------------------------------------
-        // ZERO INTEREST
-        // -----------------------------------------------------
-
-        if (monthlyRate == 0) {
-
+        if (monthlyRate == 0.0) {
             return principal / months;
         }
 
+        double factor = Math.pow(1.0 + monthlyRate, months);
 
-        // -----------------------------------------------------
-        // EMI FORMULA
-        // -----------------------------------------------------
-
-        double factor =
-                Math.pow(
-                        1 + monthlyRate,
-                        months
-                );
-
-
-        return principal
-                * monthlyRate
-                * factor
-                /
-                (factor - 1);
+        return principal * monthlyRate * factor / (factor - 1.0);
     }
 }

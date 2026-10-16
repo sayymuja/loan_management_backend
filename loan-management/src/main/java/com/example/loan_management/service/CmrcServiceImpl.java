@@ -1,11 +1,9 @@
-
-package com.example.loan_management.service.impl;
+        package com.example.loan_management.service;
 
 import com.example.loan_management.auth.service.CurrentUserService;
 import com.example.loan_management.dto.CmrcDto;
 import com.example.loan_management.entity.Cmrc;
 import com.example.loan_management.repository.CmrcRepository;
-import com.example.loan_management.service.CmrcService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -13,19 +11,26 @@ import org.modelmapper.ModelMapper;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class CmrcServiceImpl implements CmrcService {
 
     private final CmrcRepository cmrcRepository;
     private final ModelMapper modelMapper;
     private final CurrentUserService currentUserService;
 
+    // =====================================================
+    // ROLE CHECK
+    // =====================================================
+
     private boolean isSuperAdmin() {
+
         Authentication authentication =
                 SecurityContextHolder.getContext().getAuthentication();
 
@@ -36,6 +41,7 @@ public class CmrcServiceImpl implements CmrcService {
     }
 
     private void rejectSuperAdminWrite() {
+
         if (isSuperAdmin()) {
             throw new RuntimeException(
                     "SUPER_ADMIN has read-only access to CMRC records"
@@ -43,21 +49,34 @@ public class CmrcServiceImpl implements CmrcService {
         }
     }
 
+    // =====================================================
+    // CREATE CMRC
+    // =====================================================
+
     @Override
     public CmrcDto create(CmrcDto cmrcDto) {
+
         throw new RuntimeException(
                 "CMRC creation is not allowed for logged-in users"
         );
     }
+
+    // =====================================================
+    // ADD CMRC TOTAL FUND
+    // Explicit balance operation only
+    // =====================================================
 
     @Override
     public CmrcDto addBalance(Double amount) {
 
         rejectSuperAdminWrite();
 
-        if (amount == null || amount <= 0) {
+        if (amount == null
+                || !Double.isFinite(amount)
+                || amount <= 0) {
+
             throw new RuntimeException(
-                    "Balance amount must be greater than 0"
+                    "Balance amount must be a valid number greater than 0"
             );
         }
 
@@ -71,45 +90,60 @@ public class CmrcServiceImpl implements CmrcService {
         cmrc.setTotalFund(existingBalance + amount);
 
         Cmrc savedCmrc = cmrcRepository.save(cmrc);
-        cmrcRepository.flush();
 
-        return modelMapper.map(savedCmrc, CmrcDto.class);
+        return convertToDto(savedCmrc);
     }
 
+    // =====================================================
+    // GET ALL CMRC
+    // =====================================================
+
     @Override
+    @Transactional(readOnly = true)
     public List<CmrcDto> getAll() {
 
         List<Cmrc> cmrcList;
 
         if (isSuperAdmin()) {
-            // SUPER_ADMIN can view every CMRC.
             cmrcList = cmrcRepository.findAll();
         } else {
-            // ADMIN and USER can view only their assigned CMRC.
             cmrcList = List.of(getCurrentCmrc());
         }
 
         return cmrcList.stream()
-                .map(cmrc -> modelMapper.map(cmrc, CmrcDto.class))
+                .map(this::convertToDto)
                 .collect(Collectors.toList());
     }
 
+    // =====================================================
+    // GET CMRC BY ID
+    // =====================================================
+
     @Override
+    @Transactional(readOnly = true)
     public CmrcDto getById(Long id) {
 
         Cmrc cmrc;
 
         if (isSuperAdmin()) {
-            // Read-only access to any CMRC.
+
             cmrc = cmrcRepository.findById(id)
                     .orElseThrow(() ->
                             new RuntimeException("CMRC not found"));
+
         } else {
+
             cmrc = getAuthorizedCmrc(id);
         }
 
-        return modelMapper.map(cmrc, CmrcDto.class);
+        return convertToDto(cmrc);
     }
+
+    // =====================================================
+    // UPDATE CMRC DETAILS
+    // IMPORTANT: totalFund is not modified here
+    // =====================================================
+
 
     @Override
     public CmrcDto update(Long id, CmrcDto cmrcDto) {
@@ -118,22 +152,42 @@ public class CmrcServiceImpl implements CmrcService {
 
         Cmrc cmrc = getAuthorizedCmrc(id);
 
-        cmrc.setCmrcName(cmrcDto.getCmrcName());
-        cmrc.setAccountNo(cmrcDto.getAccountNo());
-        cmrc.setAccountOpeningDate(cmrcDto.getAccountOpeningDate());
-        cmrc.setDistrict(cmrcDto.getDistrict());
-        cmrc.setTaluka(cmrcDto.getTaluka());
-        cmrc.setStatus(cmrcDto.getStatus());
+        // Update only Balance Amount and Status.
+        if (cmrcDto.getTotalFund() == null
+                || !Double.isFinite(cmrcDto.getTotalFund())
+                || cmrcDto.getTotalFund() < 0) {
 
-        if (cmrcDto.getTotalFund() != null) {
-            cmrc.setTotalFund(cmrcDto.getTotalFund());
+            throw new RuntimeException(
+                    "Balance amount must be a valid number greater than or equal to 0"
+            );
         }
 
-        Cmrc updatedCmrc = cmrcRepository.save(cmrc);
-        cmrcRepository.flush();
+        String status = cmrcDto.getStatus();
 
-        return modelMapper.map(updatedCmrc, CmrcDto.class);
+        if (status == null
+                || (!"ACTIVE".equalsIgnoreCase(status)
+                && !"INACTIVE".equalsIgnoreCase(status))) {
+
+            throw new RuntimeException(
+                    "Status must be ACTIVE or INACTIVE"
+            );
+        }
+
+        // Set the new balance directly; do not add it to the old balance.
+        cmrc.setTotalFund(cmrcDto.getTotalFund());
+        cmrc.setStatus(status.toUpperCase());
+
+        // Preserve CMRC name, account number, opening date,
+        // district and taluka without modifying them.
+        Cmrc updatedCmrc = cmrcRepository.save(cmrc);
+
+        return convertToDto(updatedCmrc);
     }
+
+
+    // =====================================================
+    // DELETE CMRC
+    // =====================================================
 
     @Override
     public void delete(Long id) {
@@ -143,8 +197,29 @@ public class CmrcServiceImpl implements CmrcService {
         Cmrc cmrc = getAuthorizedCmrc(id);
 
         cmrcRepository.delete(cmrc);
-        cmrcRepository.flush();
     }
+
+    // =====================================================
+    // ENTITY TO DTO
+    // =====================================================
+
+    private CmrcDto convertToDto(Cmrc cmrc) {
+
+        CmrcDto dto = modelMapper.map(cmrc, CmrcDto.class);
+
+        // Single balance field
+        dto.setTotalFund(
+                cmrc.getTotalFund() == null
+                        ? 0.0
+                        : cmrc.getTotalFund()
+        );
+
+        return dto;
+    }
+
+    // =====================================================
+    // GET CURRENT USER CMRC
+    // =====================================================
 
     private Cmrc getCurrentCmrc() {
 
@@ -162,6 +237,10 @@ public class CmrcServiceImpl implements CmrcService {
                                 "CMRC not found for logged-in user"
                         ));
     }
+
+    // =====================================================
+    // AUTHORIZE CMRC
+    // =====================================================
 
     private Cmrc getAuthorizedCmrc(Long id) {
 

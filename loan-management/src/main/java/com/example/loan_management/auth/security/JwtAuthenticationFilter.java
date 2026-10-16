@@ -7,6 +7,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 
 import lombok.RequiredArgsConstructor;
 
@@ -20,8 +21,10 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.Locale;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
+
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
@@ -94,6 +97,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         } catch (Exception e) {
             SecurityContextHolder.clearContext();
+
+            log.warn(
+                    "JWT authentication failed for {} {}: {}",
+                    request.getMethod(),
+                    request.getRequestURI(),
+                    e.getMessage()
+            );
         }
 
         filterChain.doFilter(request, response);

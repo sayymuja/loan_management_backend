@@ -1,4 +1,4 @@
-package com.example.loan_management.entity;
+        package com.example.loan_management.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -36,6 +36,7 @@ public class Repayment {
     @Column(name = "penalty_amount")
     private Double penaltyAmount;
 
+    @Column(name = "remark")
     private String remark;
 
     @Column(name = "paid_amount")
@@ -52,6 +53,4 @@ public class Repayment {
 
     @Column(name = "payment_status")
     private String paymentStatus;
-
-
 }

@@ -1,4 +1,4 @@
-package com.example.loan_management.repository;
+        package com.example.loan_management.repository;
 
 import com.example.loan_management.entity.Loan;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,7 +16,7 @@ public interface LoanRepository extends JpaRepository<Loan, Long> {
 
     // =========================================================
     // GET LOANS BY CMRC
-    // Loan -> Woman -> Group -> cmrcId
+    // Loan -> Woman -> Group -> CMRC
     // =========================================================
 
     List<Loan> findByWoman_Group_CmrcId(Long cmrcId);

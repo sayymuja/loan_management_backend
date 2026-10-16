@@ -1,4 +1,4 @@
-package com.example.loan_management.entity;
+        package com.example.loan_management.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -14,28 +14,16 @@ public class Loan {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-
-    // =========================================================
     // WOMAN
-    // =========================================================
-
     @ManyToOne
     @JoinColumn(name = "woman_id", nullable = false)
     private Women woman;
 
-
-    // =========================================================
     // VO / ALF
-    // =========================================================
-
     @Column(name = "vo_alf_id", nullable = false)
     private Long voAlfId;
 
-
-    // =========================================================
     // LOAN AMOUNT
-    // =========================================================
-
     @Column(name = "sanctioned_amount")
     private Double sanctionedAmount;
 
@@ -45,22 +33,14 @@ public class Loan {
     @Column(name = "disbursed_amount")
     private Double loanAmount;
 
-
-    // =========================================================
     // LOAN DETAILS
-    // =========================================================
-
     @Column(name = "loan_purpose")
     private String loanPurpose;
 
     @Column(name = "loan_given_date")
     private LocalDate loanGivenDate;
 
-
-    // =========================================================
     // REPAYMENT
-    // =========================================================
-
     @Column(name = "repayment_period_months")
     private Integer repaymentPeriodMonths;
 
@@ -73,11 +53,7 @@ public class Loan {
     @Column(name = "monthly_emi")
     private Double monthlyEmi;
 
-
-    // =========================================================
     // STATUS
-    // =========================================================
-
     @Column(name = "loan_status")
     private String loanStatus;
 }

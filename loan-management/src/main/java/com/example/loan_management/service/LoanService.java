@@ -1,4 +1,4 @@
-package com.example.loan_management.service;
+        package com.example.loan_management.service;
 
 import com.example.loan_management.dto.LoanDto;
 
@@ -7,35 +7,35 @@ import java.util.List;
 public interface LoanService {
 
     // =========================================================
-    // CREATE
+    // CREATE LOAN
     // =========================================================
 
     LoanDto create(LoanDto loanDto);
 
 
     // =========================================================
-    // GET ALL
+    // GET ALL LOANS
     // =========================================================
 
     List<LoanDto> getAll();
 
 
     // =========================================================
-    // GET BY ID
+    // GET LOAN BY ID
     // =========================================================
 
     LoanDto getById(Long id);
 
 
     // =========================================================
-    // UPDATE
+    // UPDATE LOAN
     // =========================================================
 
     LoanDto update(Long id, LoanDto loanDto);
 
 
     // =========================================================
-    // DELETE
+    // DELETE LOAN
     // =========================================================
 
     void delete(Long id);

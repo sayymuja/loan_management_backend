@@ -1,8 +1,9 @@
-
-package com.example.loan_management.auth.dto;
+        package com.example.loan_management.auth.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
+
+import java.time.LocalDate;
 
 @Data
 @AllArgsConstructor
@@ -21,6 +22,10 @@ public class AuthResponse {
     private String district;
 
     private String taluka;
+
+    private String accountNo;
+
+    private LocalDate accountOpeningDate;
 
     private String token;
 

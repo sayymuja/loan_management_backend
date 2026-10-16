@@ -3,6 +3,7 @@
 import com.example.loan_management.auth.service.CurrentUserService;
 import com.example.loan_management.dto.RepaymentDto;
 import com.example.loan_management.dto.RepaymentSummaryDto;
+import com.example.loan_management.entity.FundTransaction;
 import com.example.loan_management.entity.Group;
 import com.example.loan_management.entity.Loan;
 import com.example.loan_management.entity.Repayment;
@@ -11,11 +12,13 @@ import com.example.loan_management.entity.Women;
 import com.example.loan_management.repository.LoanRepository;
 import com.example.loan_management.repository.RepaymentRepository;
 import com.example.loan_management.repository.VoAlfRepository;
-import jakarta.transaction.Transactional;
+
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,6 +33,7 @@ public class RepaymentServiceImpl implements RepaymentService {
     private final VoAlfRepository voAlfRepository;
     private final ModelMapper modelMapper;
     private final CurrentUserService currentUserService;
+    private final FundManagementService fundManagementService;
 
     // =========================================================
     // CURRENT CMRC
@@ -46,7 +50,9 @@ public class RepaymentServiceImpl implements RepaymentService {
     private VoAlf getAuthorizedVoAlf(Long voAlfId) {
 
         if (voAlfId == null) {
-            throw new RuntimeException("VO / ALF ID is required");
+            throw new IllegalArgumentException(
+                    "VO / ALF ID is required."
+            );
         }
 
         VoAlf voAlf = voAlfRepository.findById(voAlfId)
@@ -56,10 +62,11 @@ public class RepaymentServiceImpl implements RepaymentService {
 
         Long currentCmrcId = getCurrentCmrcId();
 
-        if (voAlf.getCmrc() == null
+        if (currentCmrcId == null
+                || voAlf.getCmrc() == null
                 || !currentCmrcId.equals(voAlf.getCmrc().getId())) {
             throw new RuntimeException(
-                    "Access denied for this VO / ALF"
+                    "Access denied for this VO / ALF."
             );
         }
 
@@ -73,7 +80,7 @@ public class RepaymentServiceImpl implements RepaymentService {
     private Loan getAuthorizedLoan(Long loanId) {
 
         if (loanId == null) {
-            throw new RuntimeException("Loan ID is required");
+            throw new IllegalArgumentException("Loan ID is required.");
         }
 
         Loan loan = loanRepository.findById(loanId)
@@ -83,7 +90,7 @@ public class RepaymentServiceImpl implements RepaymentService {
 
         if (loan.getWoman() == null) {
             throw new RuntimeException(
-                    "Woman not found for this loan"
+                    "Woman not found for this loan."
             );
         }
 
@@ -91,23 +98,24 @@ public class RepaymentServiceImpl implements RepaymentService {
 
         if (woman.getGroup() == null) {
             throw new RuntimeException(
-                    "Group not found for this loan"
+                    "Group not found for this loan."
             );
         }
 
         Group group = woman.getGroup();
         Long currentCmrcId = getCurrentCmrcId();
 
-        if (group.getCmrcId() == null
+        if (currentCmrcId == null
+                || group.getCmrcId() == null
                 || !currentCmrcId.equals(group.getCmrcId())) {
             throw new RuntimeException(
-                    "Access denied for this loan"
+                    "Access denied for this loan."
             );
         }
 
         if (group.getVoAlfId() == null) {
             throw new RuntimeException(
-                    "VO / ALF not found for this loan"
+                    "VO / ALF not found for this loan."
             );
         }
 
@@ -116,7 +124,7 @@ public class RepaymentServiceImpl implements RepaymentService {
         if (loan.getVoAlfId() == null
                 || !group.getVoAlfId().equals(loan.getVoAlfId())) {
             throw new RuntimeException(
-                    "Loan VO / ALF does not match woman's group"
+                    "Loan VO / ALF does not match the woman's group."
             );
         }
 
@@ -124,9 +132,7 @@ public class RepaymentServiceImpl implements RepaymentService {
     }
 
     // =========================================================
-    // UPDATE VO / ALF RECEIVED FUND ONLY
-    // Positive amountDelta = add funds
-    // Negative amountDelta = reverse funds
+    // UPDATE LEGACY VO / ALF RECEIVED FUND
     // CMRC totalFund is never changed here.
     // =========================================================
 
@@ -136,27 +142,25 @@ public class RepaymentServiceImpl implements RepaymentService {
 
         if (loan == null || loan.getVoAlfId() == null) {
             throw new RuntimeException(
-                    "VO / ALF not found for this loan"
+                    "VO / ALF not found for this loan."
             );
         }
 
         VoAlf voAlf = getAuthorizedVoAlf(loan.getVoAlfId());
 
-        double currentReceivedFund =
-                voAlf.getReceivedFund() != null
-                        ? voAlf.getReceivedFund()
-                        : 0.0;
+        double currentBalance = voAlf.getReceivedFund() != null
+                ? voAlf.getReceivedFund()
+                : 0.0;
 
-        double updatedReceivedFund =
-                round(currentReceivedFund + amountDelta);
+        double updatedBalance = round(currentBalance + amountDelta);
 
-        if (updatedReceivedFund < 0) {
-            throw new RuntimeException(
-                    "VO / ALF received fund cannot become negative"
+        if (updatedBalance < 0) {
+            throw new IllegalStateException(
+                    "VO / ALF received fund cannot become negative."
             );
         }
 
-        voAlf.setReceivedFund(updatedReceivedFund);
+        voAlf.setReceivedFund(updatedBalance);
         voAlfRepository.save(voAlf);
     }
 
@@ -167,17 +171,19 @@ public class RepaymentServiceImpl implements RepaymentService {
     private Repayment getAuthorizedRepayment(Long repaymentId) {
 
         if (repaymentId == null) {
-            throw new RuntimeException("Repayment ID is required");
+            throw new IllegalArgumentException(
+                    "Repayment ID is required."
+            );
         }
 
         Repayment repayment = repaymentRepository.findById(repaymentId)
                 .orElseThrow(() -> new RuntimeException(
-                        "Repayment not found with id: " + repaymentId
+                        "Repayment not found with ID: " + repaymentId
                 ));
 
         if (repayment.getLoan() == null) {
             throw new RuntimeException(
-                    "Loan not found for this repayment"
+                    "Loan not found for this repayment."
             );
         }
 
@@ -191,7 +197,14 @@ public class RepaymentServiceImpl implements RepaymentService {
     // =========================================================
 
     @Override
+    @Transactional
     public RepaymentDto create(RepaymentDto repaymentDto) {
+
+        if (repaymentDto == null || repaymentDto.getLoanId() == null) {
+            throw new IllegalArgumentException(
+                    "Loan ID is required."
+            );
+        }
 
         Loan loan = getAuthorizedLoan(repaymentDto.getLoanId());
 
@@ -204,15 +217,14 @@ public class RepaymentServiceImpl implements RepaymentService {
 
         calculateRepayment(repayment, loan);
 
-        Repayment savedRepayment =
-                repaymentRepository.save(repayment);
+        Repayment saved = repaymentRepository.save(repayment);
 
         RepaymentDto response = modelMapper.map(
-                savedRepayment,
+                saved,
                 RepaymentDto.class
         );
 
-        response.setLoanId(savedRepayment.getLoan().getId());
+        response.setLoanId(saved.getLoan().getId());
 
         return response;
     }
@@ -222,6 +234,7 @@ public class RepaymentServiceImpl implements RepaymentService {
     // =========================================================
 
     @Override
+    @Transactional(readOnly = true)
     public List<RepaymentDto> getAll() {
 
         Long currentCmrcId = getCurrentCmrcId();
@@ -232,6 +245,7 @@ public class RepaymentServiceImpl implements RepaymentService {
                         repayment.getLoan() != null
                                 && repayment.getLoan().getWoman() != null
                                 && repayment.getLoan().getWoman().getGroup() != null
+                                && currentCmrcId != null
                                 && currentCmrcId.equals(
                                 repayment.getLoan()
                                         .getWoman()
@@ -249,7 +263,7 @@ public class RepaymentServiceImpl implements RepaymentService {
 
                     return dto;
                 })
-                .toList();
+                .collect(Collectors.toList());
     }
 
     // =========================================================
@@ -257,6 +271,7 @@ public class RepaymentServiceImpl implements RepaymentService {
     // =========================================================
 
     @Override
+    @Transactional(readOnly = true)
     public RepaymentDto getById(Long id) {
 
         Repayment repayment = getAuthorizedRepayment(id);
@@ -276,39 +291,49 @@ public class RepaymentServiceImpl implements RepaymentService {
     // =========================================================
 
     @Override
-    public RepaymentDto update(
-            Long id,
-            RepaymentDto repaymentDto) {
+    @Transactional
+    public RepaymentDto update(Long id, RepaymentDto repaymentDto) {
 
         Repayment repayment = getAuthorizedRepayment(id);
+
+        if (repaymentDto == null || repaymentDto.getLoanId() == null) {
+            throw new IllegalArgumentException(
+                    "Loan ID is required."
+            );
+        }
+
+        // Do not allow generic update to bypass payment processing.
+        if (repayment.getPaidAmount() != null
+                && repayment.getPaidAmount() > 0) {
+            throw new IllegalStateException(
+                    "A repayment with a payment cannot be edited through "
+                            + "the general update API."
+            );
+        }
 
         Loan loan = getAuthorizedLoan(repaymentDto.getLoanId());
 
         repayment.setLoan(loan);
         repayment.setRepaymentDate(repaymentDto.getRepaymentDate());
         repayment.setPaidAmount(repaymentDto.getPaidAmount());
-
-        calculateRepayment(repayment, loan);
-
         repayment.setRegularRepayment(
                 repaymentDto.getRegularRepayment()
         );
-
         repayment.setPenaltyAmount(
                 repaymentDto.getPenaltyAmount()
         );
-
         repayment.setRemark(repaymentDto.getRemark());
 
-        Repayment updatedRepayment =
-                repaymentRepository.save(repayment);
+        calculateRepayment(repayment, loan);
+
+        Repayment updated = repaymentRepository.save(repayment);
 
         RepaymentDto response = modelMapper.map(
-                updatedRepayment,
+                updated,
                 RepaymentDto.class
         );
 
-        response.setLoanId(updatedRepayment.getLoan().getId());
+        response.setLoanId(updated.getLoan().getId());
 
         return response;
     }
@@ -318,9 +343,25 @@ public class RepaymentServiceImpl implements RepaymentService {
     // =========================================================
 
     @Override
+    @Transactional
     public void delete(Long id) {
 
         Repayment repayment = getAuthorizedRepayment(id);
+
+        double paidAmount = repayment.getPaidAmount() != null
+                ? repayment.getPaidAmount()
+                : 0.0;
+
+        double penaltyAmount = repayment.getPenaltyAmount() != null
+                ? repayment.getPenaltyAmount()
+                : 0.0;
+
+        if (paidAmount > 0 || penaltyAmount > 0) {
+            throw new IllegalStateException(
+                    "A repayment with a payment or penalty cannot be deleted. "
+                            + "Use an approved correction workflow."
+            );
+        }
 
         Long loanId = repayment.getLoan().getId();
 
@@ -334,6 +375,7 @@ public class RepaymentServiceImpl implements RepaymentService {
     // =========================================================
 
     @Override
+    @Transactional(readOnly = true)
     public RepaymentSummaryDto getSummary(Long loanId) {
 
         Loan loan = getAuthorizedLoan(loanId);
@@ -342,41 +384,25 @@ public class RepaymentServiceImpl implements RepaymentService {
                 repaymentRepository.findByLoanId(loanId);
 
         double totalPrincipal = repayments.stream()
-                .mapToDouble(r ->
-                        r.getPrincipalAmount() != null
-                                ? r.getPrincipalAmount()
-                                : 0.0
-                )
+                .mapToDouble(r -> valueOrZero(r.getPrincipalAmount()))
                 .sum();
 
         double totalInterest = repayments.stream()
-                .mapToDouble(r ->
-                        r.getInterestAmount() != null
-                                ? r.getInterestAmount()
-                                : 0.0
-                )
+                .mapToDouble(r -> valueOrZero(r.getInterestAmount()))
                 .sum();
 
         double totalRepayment = repayments.stream()
-                .mapToDouble(r ->
-                        r.getTotalAmount() != null
-                                ? r.getTotalAmount()
-                                : 0.0
-                )
+                .mapToDouble(r -> valueOrZero(r.getTotalAmount()))
                 .sum();
 
         double totalPenalty = repayments.stream()
-                .mapToDouble(r ->
-                        r.getPenaltyAmount() != null
-                                ? r.getPenaltyAmount()
-                                : 0.0
-                )
+                .mapToDouble(r -> valueOrZero(r.getPenaltyAmount()))
                 .sum();
 
+        double loanAmount = valueOrZero(loan.getLoanAmount());
+
         double outstandingAmount = Math.max(
-                (loan.getLoanAmount() != null
-                        ? loan.getLoanAmount()
-                        : 0.0) - totalPrincipal,
+                loanAmount - totalPrincipal,
                 0.0
         );
 
@@ -384,11 +410,11 @@ public class RepaymentServiceImpl implements RepaymentService {
 
         summary.setLoanId(loanId);
         summary.setLoanAmount(loan.getLoanAmount());
-        summary.setTotalPrincipalPaid(totalPrincipal);
-        summary.setTotalInterestPaid(totalInterest);
-        summary.setTotalRepayment(totalRepayment);
-        summary.setOutstandingAmount(outstandingAmount);
-        summary.setTotalPenalty(totalPenalty);
+        summary.setTotalPrincipalPaid(round(totalPrincipal));
+        summary.setTotalInterestPaid(round(totalInterest));
+        summary.setTotalRepayment(round(totalRepayment));
+        summary.setOutstandingAmount(round(outstandingAmount));
+        summary.setTotalPenalty(round(totalPenalty));
 
         return summary;
     }
@@ -398,6 +424,7 @@ public class RepaymentServiceImpl implements RepaymentService {
     // =========================================================
 
     @Override
+    @Transactional(readOnly = true)
     public List<RepaymentDto> getByLoanId(Long loanId) {
 
         getAuthorizedLoan(loanId);
@@ -414,12 +441,12 @@ public class RepaymentServiceImpl implements RepaymentService {
 
                     return dto;
                 })
-                .toList();
+                .collect(Collectors.toList());
     }
 
     // =========================================================
-    // GENERATE REPAYMENT SCHEDULE
-    // Existing records are never deleted or regenerated.
+    // GENERATE SCHEDULE
+    // Never delete or regenerate existing repayments.
     // =========================================================
 
     @Override
@@ -428,13 +455,11 @@ public class RepaymentServiceImpl implements RepaymentService {
 
         Loan loan = getAuthorizedLoan(loanId);
 
-        List<Repayment> existingRepayments =
+        List<Repayment> existing =
                 repaymentRepository.findByLoanId(loanId);
 
-        if (existingRepayments != null
-                && !existingRepayments.isEmpty()) {
-
-            return existingRepayments.stream()
+        if (existing != null && !existing.isEmpty()) {
+            return existing.stream()
                     .sorted((a, b) -> {
                         Integer noA = a.getInstallmentNo();
                         Integer noB = b.getInstallmentNo();
@@ -442,11 +467,9 @@ public class RepaymentServiceImpl implements RepaymentService {
                         if (noA == null && noB == null) {
                             return 0;
                         }
-
                         if (noA == null) {
                             return 1;
                         }
-
                         if (noB == null) {
                             return -1;
                         }
@@ -459,11 +482,7 @@ public class RepaymentServiceImpl implements RepaymentService {
                                 RepaymentDto.class
                         );
 
-                        if (repayment.getLoan() != null) {
-                            dto.setLoanId(
-                                    repayment.getLoan().getId()
-                            );
-                        }
+                        dto.setLoanId(repayment.getLoan().getId());
 
                         return dto;
                     })
@@ -472,46 +491,48 @@ public class RepaymentServiceImpl implements RepaymentService {
 
         if (loan.getLoanAmount() == null
                 || loan.getLoanAmount() <= 0) {
-            throw new RuntimeException("Loan amount is invalid");
+            throw new IllegalArgumentException(
+                    "Loan amount is invalid."
+            );
         }
 
         if (loan.getInterestRate() == null
                 || loan.getInterestRate() < 0) {
-            throw new RuntimeException("Interest rate is invalid");
+            throw new IllegalArgumentException(
+                    "Interest rate is invalid."
+            );
         }
 
         if (loan.getMonthlyEmi() == null
                 || loan.getMonthlyEmi() <= 0) {
-            throw new RuntimeException("Monthly EMI is invalid");
+            throw new IllegalArgumentException(
+                    "Monthly EMI is invalid."
+            );
         }
 
         if (loan.getRepaymentPeriodMonths() == null
                 || loan.getRepaymentPeriodMonths() <= 0) {
-            throw new RuntimeException(
-                    "Repayment period is invalid"
+            throw new IllegalArgumentException(
+                    "Repayment period is invalid."
             );
         }
 
         if (loan.getLoanGivenDate() == null) {
-            throw new RuntimeException(
-                    "Loan given date is required"
+            throw new IllegalArgumentException(
+                    "Loan given date is required."
             );
         }
 
         double outstandingPrincipal = loan.getLoanAmount();
-
-        double monthlyRate =
-                loan.getInterestRate() / 12.0 / 100.0;
-
+        double monthlyRate = loan.getInterestRate() / 12.0 / 100.0;
         double emi = loan.getMonthlyEmi();
 
-        int totalInstallments =
-                loan.getRepaymentPeriodMonths();
+        int totalInstallments = loan.getRepaymentPeriodMonths();
 
         LocalDate firstInstallmentDate =
                 loan.getLoanGivenDate().plusMonths(1);
 
-        List<Repayment> repaymentList = new ArrayList<>();
+        List<Repayment> schedule = new ArrayList<>();
 
         for (int i = 1; i <= totalInstallments; i++) {
 
@@ -519,7 +540,6 @@ public class RepaymentServiceImpl implements RepaymentService {
 
             repayment.setLoan(loan);
             repayment.setInstallmentNo(i);
-
             repayment.setInstallmentDate(
                     firstInstallmentDate.plusMonths(i - 1)
             );
@@ -527,8 +547,10 @@ public class RepaymentServiceImpl implements RepaymentService {
             double interestAmount =
                     outstandingPrincipal * monthlyRate;
 
-            double principalAmount =
-                    Math.max(0.0, emi - interestAmount);
+            double principalAmount = Math.max(
+                    0.0,
+                    emi - interestAmount
+            );
 
             principalAmount = Math.min(
                     principalAmount,
@@ -545,7 +567,6 @@ public class RepaymentServiceImpl implements RepaymentService {
             repayment.setPrincipalAmount(round(principalAmount));
             repayment.setInterestAmount(round(interestAmount));
             repayment.setScheduledAmount(round(scheduledAmount));
-
             repayment.setPaidAmount(0.0);
             repayment.setPenaltyAmount(0.0);
             repayment.setTotalAmount(0.0);
@@ -554,7 +575,7 @@ public class RepaymentServiceImpl implements RepaymentService {
             repayment.setRepaymentDate(null);
             repayment.setRemark(null);
 
-            repaymentList.add(repayment);
+            schedule.add(repayment);
 
             outstandingPrincipal = Math.max(
                     0.0,
@@ -562,10 +583,9 @@ public class RepaymentServiceImpl implements RepaymentService {
             );
         }
 
-        List<Repayment> savedList =
-                repaymentRepository.saveAll(repaymentList);
+        List<Repayment> saved = repaymentRepository.saveAll(schedule);
 
-        return savedList.stream()
+        return saved.stream()
                 .map(repayment -> {
                     RepaymentDto dto = modelMapper.map(
                             repayment,
@@ -587,25 +607,14 @@ public class RepaymentServiceImpl implements RepaymentService {
             Repayment repayment,
             Loan loan) {
 
-        double paidAmount =
-                repayment.getPaidAmount() != null
-                        ? repayment.getPaidAmount()
-                        : 0.0;
+        double paidAmount = valueOrZero(repayment.getPaidAmount());
+        double loanAmount = valueOrZero(loan.getLoanAmount());
+        double annualRate = valueOrZero(loan.getInterestRate());
 
-        double loanAmount =
-                loan.getLoanAmount() != null
-                        ? loan.getLoanAmount()
-                        : 0.0;
-
-        double annualRate =
-                loan.getInterestRate() != null
-                        ? loan.getInterestRate()
-                        : 0.0;
-
-        List<Repayment> previousRepayments =
+        List<Repayment> previous =
                 repaymentRepository.findByLoanId(loan.getId());
 
-        double paidPrincipal = previousRepayments.stream()
+        double paidPrincipal = previous.stream()
                 .filter(r ->
                         r.getId() == null
                                 || !r.getId().equals(repayment.getId())
@@ -617,9 +626,7 @@ public class RepaymentServiceImpl implements RepaymentService {
                         )
                 )
                 .mapToDouble(r ->
-                        r.getPrincipalAmount() != null
-                                ? Math.max(r.getPrincipalAmount(), 0.0)
-                                : 0.0
+                        Math.max(valueOrZero(r.getPrincipalAmount()), 0.0)
                 )
                 .sum();
 
@@ -646,9 +653,8 @@ public class RepaymentServiceImpl implements RepaymentService {
     }
 
     // =========================================================
-    // PAY EMI
-    // Updates VO / ALF receivedFund only.
-    // CMRC totalFund remains unchanged.
+    // PAY EMI - LEGACY SIGNATURE
+    // The event ID is mandatory to prevent duplicate payments.
     // =========================================================
 
     @Override
@@ -659,52 +665,120 @@ public class RepaymentServiceImpl implements RepaymentService {
             Double penaltyAmount,
             Boolean regularRepayment) {
 
-        Repayment repayment =
-                getAuthorizedRepayment(repaymentId);
+        throw new IllegalStateException(
+                "Payment event ID is required for EMI payment."
+        );
+    }
 
-        double payment =
-                paidAmount != null ? paidAmount : 0.0;
+    // =========================================================
+    // PAY EMI - SINGLE BALANCE + IDEMPOTENCY
+    // paymentEventId is the fifth parameter.
+    // =========================================================
 
-        double penalty =
-                penaltyAmount != null ? penaltyAmount : 0.0;
+    @Override
+    @Transactional
+    public RepaymentDto payEmi(
+            Long repaymentId,
+            Double paidAmount,
+            Double penaltyAmount,
+            Boolean regularRepayment,
+            String paymentEventId) {
 
-        double scheduled =
-                repayment.getScheduledAmount() != null
-                        ? repayment.getScheduledAmount()
-                        : 0.0;
+        if (paymentEventId == null || paymentEventId.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Payment event ID is required."
+            );
+        }
 
-        double alreadyPaid =
-                repayment.getPaidAmount() != null
-                        ? repayment.getPaidAmount()
-                        : 0.0;
+        String eventId = paymentEventId.trim();
 
-        double existingPenalty =
-                repayment.getPenaltyAmount() != null
-                        ? repayment.getPenaltyAmount()
-                        : 0.0;
+        // Leave room for the ":PENALTY" suffix.
+        if (eventId.length() > 82) {
+            throw new IllegalArgumentException(
+                    "Payment event ID must not exceed 82 characters."
+            );
+        }
+
+        double payment = round(valueOrZero(paidAmount));
+        double requestedPenalty = round(valueOrZero(penaltyAmount));
 
         if (payment <= 0) {
-            throw new RuntimeException(
-                    "Payment amount must be greater than zero"
+            throw new IllegalArgumentException(
+                    "Payment amount must be greater than zero."
             );
         }
 
-        if (penalty < 0) {
-            throw new RuntimeException(
-                    "Penalty amount cannot be negative"
+        if (requestedPenalty < 0) {
+            throw new IllegalArgumentException(
+                    "Penalty amount cannot be negative."
             );
         }
+
+        Repayment repayment = getAuthorizedRepayment(repaymentId);
+        Loan loan = repayment.getLoan();
+
+        double existingPenalty = round(
+                valueOrZero(repayment.getPenaltyAmount())
+        );
+
+        // Check idempotency before applying any balance changes.
+        FundTransaction existing =
+                fundManagementService.getTransactionByPaymentEventId(
+                        eventId
+                );
+
+        if (existing != null) {
+
+            boolean matches =
+                    existing.getTransactionType()
+                            == FundTransaction.TransactionType.RECEIPT
+                            && existing.getCategory()
+                            == FundTransaction.FundCategory.LOAN_REPAYMENT
+                            && existing.getReferenceId() != null
+                            && existing.getReferenceId().equals(repaymentId)
+                            && "REPAYMENT".equals(
+                            existing.getReferenceType()
+                    )
+                            && existing.getAmount() != null
+                            && existing.getAmount().compareTo(
+                            BigDecimal.valueOf(payment)
+                    ) == 0;
+
+            if (!matches) {
+                throw new IllegalStateException(
+                        "Payment event ID is already used for a different transaction."
+                );
+            }
+
+            if (Math.abs(existingPenalty - requestedPenalty) > 0.001) {
+                throw new IllegalStateException(
+                        "This payment event was already processed "
+                                + "with a different penalty."
+                );
+            }
+
+            RepaymentDto duplicateResponse = modelMapper.map(
+                    repayment,
+                    RepaymentDto.class
+            );
+
+            duplicateResponse.setLoanId(loan.getId());
+
+            return duplicateResponse;
+        }
+
+        double scheduled = valueOrZero(repayment.getScheduledAmount());
+        double alreadyPaid = valueOrZero(repayment.getPaidAmount());
 
         if (scheduled <= 0) {
-            throw new RuntimeException(
-                    "Scheduled EMI amount is invalid"
+            throw new IllegalStateException(
+                    "Scheduled EMI amount is invalid."
             );
         }
 
-        if ("PAID".equalsIgnoreCase(
-                repayment.getPaymentStatus())) {
-            throw new RuntimeException(
-                    "This EMI is already fully paid. Use Edit EMI instead."
+        if ("PAID".equalsIgnoreCase(repayment.getPaymentStatus())) {
+            throw new IllegalStateException(
+                    "This EMI is already fully paid."
             );
         }
 
@@ -713,64 +787,98 @@ public class RepaymentServiceImpl implements RepaymentService {
         );
 
         if (payment > remaining + 0.001) {
-            throw new RuntimeException(
+            throw new IllegalArgumentException(
                     "Payment exceeds remaining EMI amount: " + remaining
             );
         }
 
+        if (requestedPenalty + 0.001 < existingPenalty) {
+            throw new IllegalArgumentException(
+                    "Penalty cannot be reduced without an approved correction."
+            );
+        }
+
+        double penaltyDelta = round(
+                Math.max(0.0, requestedPenalty - existingPenalty)
+        );
+
         double totalPaid = round(alreadyPaid + payment);
 
-        if (totalPaid > scheduled
-                && totalPaid - scheduled <= 0.001) {
+        if (totalPaid > scheduled && totalPaid - scheduled <= 0.001) {
             totalPaid = scheduled;
         }
 
         if (totalPaid > scheduled) {
-            throw new RuntimeException(
-                    "Total paid amount cannot exceed scheduled EMI"
+            throw new IllegalArgumentException(
+                    "Total paid amount cannot exceed scheduled EMI."
+            );
+        }
+
+        if (loan.getVoAlfId() == null) {
+            throw new IllegalStateException(
+                    "VO / ALF not found for this loan."
+            );
+        }
+
+        // Record the EMI receipt in the fund ledger.
+        fundManagementService.recordInternalTransaction(
+                loan.getVoAlfId(),
+                FundTransaction.TransactionType.RECEIPT,
+                FundTransaction.FundCategory.LOAN_REPAYMENT,
+                BigDecimal.valueOf(payment),
+                LocalDate.now(),
+                "EMI repayment for repayment ID " + repaymentId,
+                "REPAYMENT",
+                repaymentId,
+                eventId
+        );
+
+        // Record only the incremental penalty.
+        if (penaltyDelta > 0) {
+            fundManagementService.recordInternalTransaction(
+                    loan.getVoAlfId(),
+                    FundTransaction.TransactionType.RECEIPT,
+                    FundTransaction.FundCategory.PENALTY_RECEIVED,
+                    BigDecimal.valueOf(penaltyDelta),
+                    LocalDate.now(),
+                    "Penalty for repayment ID " + repaymentId,
+                    "REPAYMENT_PENALTY",
+                    repaymentId,
+                    eventId + ":PENALTY"
             );
         }
 
         repayment.setPaidAmount(totalPaid);
-
-        repayment.setPenaltyAmount(
-                penaltyAmount != null
-                        ? penalty
-                        : existingPenalty
-        );
-
+        repayment.setPenaltyAmount(requestedPenalty);
         repayment.setRegularRepayment(
-                regularRepayment != null
-                        ? regularRepayment
-                        : false
+                Boolean.TRUE.equals(regularRepayment)
         );
-
-        if (totalPaid <= 0) {
-            repayment.setPaymentStatus("PENDING");
-        } else if (totalPaid + 0.001 >= scheduled) {
-            repayment.setPaymentStatus("PAID");
-        } else {
-            repayment.setPaymentStatus("PARTIAL");
-        }
-
         repayment.setRepaymentDate(LocalDate.now());
 
-        calculateRepayment(repayment, repayment.getLoan());
+        repayment.setPaymentStatus(
+                totalPaid + 0.001 >= scheduled
+                        ? "PAID"
+                        : "PARTIAL"
+        );
 
-        double finalPenalty =
-                repayment.getPenaltyAmount() != null
-                        ? repayment.getPenaltyAmount()
-                        : 0.0;
+        calculateRepayment(repayment, loan);
 
         repayment.setTotalAmount(
-                round(totalPaid + finalPenalty)
+                round(totalPaid + requestedPenalty)
         );
 
         Repayment saved = repaymentRepository.save(repayment);
 
-        // Only VO / ALF receivedFund is increased.
-        // CMRC totalFund is not updated.
+        // Update the legacy VO/ALF receivedFund field only.
+        // CMRC totalFund is never changed by this service.
         updateVoAlfReceivedFund(saved.getLoan(), payment);
+
+        if (penaltyDelta > 0) {
+            updateVoAlfReceivedFund(
+                    saved.getLoan(),
+                    penaltyDelta
+            );
+        }
 
         updateLoanStatus(saved.getLoan().getId());
 
@@ -786,8 +894,7 @@ public class RepaymentServiceImpl implements RepaymentService {
 
     // =========================================================
     // EDIT PAID EMI
-    // Adjusts VO / ALF receivedFund by the difference only.
-    // CMRC totalFund remains unchanged.
+    // Disabled until an approved correction/refund workflow exists.
     // =========================================================
 
     @Override
@@ -797,93 +904,13 @@ public class RepaymentServiceImpl implements RepaymentService {
             Double paidAmount,
             Double penaltyAmount) {
 
-        Repayment repayment =
-                getAuthorizedRepayment(repaymentId);
+        getAuthorizedRepayment(repaymentId);
 
-        double paid =
-                paidAmount != null ? paidAmount : 0.0;
-
-        double penalty =
-                penaltyAmount != null ? penaltyAmount : 0.0;
-
-        double scheduled =
-                repayment.getScheduledAmount() != null
-                        ? repayment.getScheduledAmount()
-                        : 0.0;
-
-        double previousPaid =
-                repayment.getPaidAmount() != null
-                        ? repayment.getPaidAmount()
-                        : 0.0;
-
-        if (paid < 0) {
-            throw new RuntimeException(
-                    "Paid amount cannot be negative"
-            );
-        }
-
-        if (penalty < 0) {
-            throw new RuntimeException(
-                    "Penalty amount cannot be negative"
-            );
-        }
-
-        if (paid > scheduled + 0.001) {
-            throw new RuntimeException(
-                    "Paid amount cannot exceed scheduled EMI"
-            );
-        }
-
-        if (paid > scheduled) {
-            paid = scheduled;
-        }
-
-        repayment.setPaidAmount(paid);
-        repayment.setPenaltyAmount(penalty);
-
-        if (paid <= 0) {
-            repayment.setPaymentStatus("PENDING");
-        } else if (paid + 0.001 >= scheduled) {
-            repayment.setPaymentStatus("PAID");
-        } else {
-            repayment.setPaymentStatus("PARTIAL");
-        }
-
-        if (paid > 0) {
-            repayment.setRepaymentDate(LocalDate.now());
-        } else {
-            repayment.setRepaymentDate(null);
-        }
-
-        calculateRepayment(
-                repayment,
-                repayment.getLoan()
+        throw new IllegalStateException(
+                "Paid EMI editing is disabled. "
+                        + "An approved correction/refund transaction "
+                        + "is required before editing."
         );
-
-        repayment.setTotalAmount(round(paid + penalty));
-
-        Repayment saved = repaymentRepository.save(repayment);
-
-        // Change VO / ALF receivedFund by the difference only.
-        double amountDifference = round(paid - previousPaid);
-
-        if (amountDifference != 0) {
-            updateVoAlfReceivedFund(
-                    saved.getLoan(),
-                    amountDifference
-            );
-        }
-
-        updateLoanStatus(saved.getLoan().getId());
-
-        RepaymentDto response = modelMapper.map(
-                saved,
-                RepaymentDto.class
-        );
-
-        response.setLoanId(saved.getLoan().getId());
-
-        return response;
     }
 
     // =========================================================
@@ -900,9 +927,7 @@ public class RepaymentServiceImpl implements RepaymentService {
         Integer totalInstallments =
                 loan.getRepaymentPeriodMonths();
 
-        if (totalInstallments == null
-                || totalInstallments <= 0) {
-
+        if (totalInstallments == null || totalInstallments <= 0) {
             loan.setLoanStatus("ACTIVE");
             loanRepository.save(loan);
             return;
@@ -910,24 +935,26 @@ public class RepaymentServiceImpl implements RepaymentService {
 
         long paidInstallments = repayments.stream()
                 .filter(r ->
-                        "PAID".equalsIgnoreCase(
-                                r.getPaymentStatus()
-                        )
+                        "PAID".equalsIgnoreCase(r.getPaymentStatus())
                 )
                 .count();
 
-        if (paidInstallments >= totalInstallments) {
-            loan.setLoanStatus("CLOSED");
-        } else {
-            loan.setLoanStatus("ACTIVE");
-        }
+        loan.setLoanStatus(
+                paidInstallments >= totalInstallments
+                        ? "CLOSED"
+                        : "ACTIVE"
+        );
 
         loanRepository.save(loan);
     }
 
     // =========================================================
-    // ROUND TO TWO DECIMAL PLACES
+    // HELPERS
     // =========================================================
+
+    private double valueOrZero(Double value) {
+        return value != null ? value : 0.0;
+    }
 
     private double round(double value) {
         return Math.round(value * 100.0) / 100.0;

@@ -20,7 +20,10 @@ public class AuthController {
         this.authService = authService;
     }
 
+    // =========================================================
     // SIGNUP
+    // =========================================================
+
     @PostMapping("/signup")
     public ResponseEntity<User> signup(
             @RequestBody SignupRequest request) {
@@ -33,7 +36,10 @@ public class AuthController {
         return ResponseEntity.ok(savedUser);
     }
 
+    // =========================================================
     // LOGIN
+    // =========================================================
+
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(
             @RequestBody LoginRequest request) {
@@ -58,7 +64,7 @@ public class AuthController {
             cmrcName = user.getCmrc().getCmrcName();
         }
 
-        // AuthResponse order: token first, role second
+        // Build login response
         AuthResponse response = new AuthResponse(
                 user.getId(),
                 user.getName(),
@@ -67,6 +73,8 @@ public class AuthController {
                 cmrcName,
                 user.getDistrict(),
                 user.getTaluka(),
+                user.getAccountNo(),
+                user.getAccountOpeningDate(),
                 token,
                 user.getRole()
         );
