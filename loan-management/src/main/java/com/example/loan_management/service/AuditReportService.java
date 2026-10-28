@@ -60,13 +60,17 @@ public class AuditReportService {
             endDate = startDate.plusYears(1).minusDays(1);
 
             periodLabel = financialYear + "-"
-                    + String.format("%02d", (financialYear + 1) % 100);
+                    + String.format(
+                    "%02d",
+                    (financialYear + 1) % 100
+            );
 
         } else if ("MONTHLY".equals(normalizedType)) {
 
             if (month == null || month < 1 || month > 12) {
                 throw new IllegalArgumentException(
-                        "For monthly reports, month must be between 1 and 12");
+                        "For monthly reports, month must be between 1 and 12"
+                );
             }
 
             // January-March belong to the next calendar year
@@ -77,14 +81,16 @@ public class AuditReportService {
 
             startDate = LocalDate.of(calendarYear, month, 1);
             endDate = startDate.withDayOfMonth(
-                    startDate.lengthOfMonth());
+                    startDate.lengthOfMonth()
+            );
 
             periodLabel = startDate.getMonth().name()
                     + " " + calendarYear;
 
         } else {
             throw new IllegalArgumentException(
-                    "reportType must be MONTHLY or YEARLY");
+                    "reportType must be MONTHLY or YEARLY"
+            );
         }
 
         boolean superAdmin = currentUserService.isSuperAdmin();
@@ -127,14 +133,16 @@ public class AuditReportService {
             if (account == null) {
                 report.getExceptions().add(
                         "Missing fund account for VO/ALF: "
-                                + voAlf.getVoAlfName());
+                                + voAlf.getVoAlfName()
+                );
                 continue;
             }
 
             List<FundTransaction> transactions =
                     fundTransactionRepository
                             .findByFundAccountIdOrderByTransactionDateDescIdDesc(
-                                    account.getId());
+                                    account.getId()
+                            );
 
             AuditReportDto.AuditLine line = buildLine(
                     voAlf,
@@ -144,7 +152,7 @@ public class AuditReportService {
                     endDate
             );
 
-            // Add loan, group, woman and repayment details.
+            // Populate loan, group, woman and repayment details.
             populateLoanHierarchy(
                     line,
                     voAlf,
@@ -160,17 +168,21 @@ public class AuditReportService {
             totalPayments = totalPayments.add(line.getPayments());
             totalClosing = totalClosing.add(line.getClosingBalance());
 
-            totalDisbursement =
-                    totalDisbursement.add(line.getLoanDisbursement());
+            totalDisbursement = totalDisbursement.add(
+                    line.getLoanDisbursement()
+            );
 
-            totalPrincipal =
-                    totalPrincipal.add(line.getPrincipalRecovered());
+            totalPrincipal = totalPrincipal.add(
+                    line.getPrincipalRecovered()
+            );
 
-            totalInterest =
-                    totalInterest.add(line.getInterestReceived());
+            totalInterest = totalInterest.add(
+                    line.getInterestReceived()
+            );
 
-            totalPenalty =
-                    totalPenalty.add(line.getPenaltyReceived());
+            totalPenalty = totalPenalty.add(
+                    line.getPenaltyReceived()
+            );
 
             totalPending += line.getPendingApprovals();
 
@@ -305,12 +317,16 @@ public class AuditReportService {
             transactionAudit.setTransactionType(
                     tx.getTransactionType() == null
                             ? null
-                            : tx.getTransactionType().name());
+                            : tx.getTransactionType().name()
+            );
             transactionAudit.setCategory(
-                    category == null ? null : category.name());
+                    category == null ? null : category.name()
+            );
             transactionAudit.setApprovalStatus(
                     tx.getApprovalStatus() == null
-                            ? null : tx.getApprovalStatus().name());
+                            ? null
+                            : tx.getApprovalStatus().name()
+            );
             transactionAudit.setAmount(amount);
             transactionAudit.setRemark(tx.getRemark());
             transactionAudit.setReferenceType(tx.getReferenceType());
@@ -344,8 +360,7 @@ public class AuditReportService {
 
                 case BANK_FUND_RECEIVED:
                     if (isReceipt) {
-                        bankFundReceived =
-                                bankFundReceived.add(amount);
+                        bankFundReceived = bankFundReceived.add(amount);
                     }
                     break;
 
@@ -357,15 +372,13 @@ public class AuditReportService {
 
                 case INTEREST_RECEIVED:
                     if (isReceipt) {
-                        interestReceived =
-                                interestReceived.add(amount);
+                        interestReceived = interestReceived.add(amount);
                     }
                     break;
 
                 case PENALTY_RECEIVED:
                     if (isReceipt) {
-                        penaltyReceived =
-                                penaltyReceived.add(amount);
+                        penaltyReceived = penaltyReceived.add(amount);
                     }
                     break;
 
@@ -505,7 +518,7 @@ public class AuditReportService {
         Map<Long, AuditReportDto.WomanAudit> women =
                 new LinkedHashMap<>();
 
-        BigDecimal periodDisbursement = BigDecimal.ZERO;
+        BigDecimal totalLoanDisbursement = BigDecimal.ZERO;
         BigDecimal periodPrincipal = BigDecimal.ZERO;
         BigDecimal periodInterest = BigDecimal.ZERO;
         BigDecimal periodPenalty = BigDecimal.ZERO;
@@ -545,11 +558,14 @@ public class AuditReportService {
                                 new AuditReportDto.WomanAudit();
                         item.setWomanId(loan.getWoman().getId());
                         item.setWomanName(
-                                loan.getWoman().getWomanName());
+                                loan.getWoman().getWomanName()
+                        );
                         item.setHusbandName(
-                                loan.getWoman().getHusbandName());
+                                loan.getWoman().getHusbandName()
+                        );
                         item.setMobileNo(
-                                loan.getWoman().getMobileNo());
+                                loan.getWoman().getMobileNo()
+                        );
                         item.setStatus(loan.getWoman().getStatus());
 
                         groupAudit.getWomen().add(item);
@@ -566,15 +582,20 @@ public class AuditReportService {
             loanAudit.setInterestType(loan.getInterestType());
 
             loanAudit.setSanctionedAmount(
-                    decimal(loan.getSanctionedAmount()));
+                    decimal(loan.getSanctionedAmount())
+            );
             loanAudit.setProcessingFee(
-                    decimal(loan.getProcessingFee()));
+                    decimal(loan.getProcessingFee())
+            );
             loanAudit.setDisbursedAmount(
-                    decimal(loan.getLoanAmount()));
+                    decimal(loan.getLoanAmount())
+            );
             loanAudit.setInterestRate(
-                    decimal(loan.getInterestRate()));
+                    decimal(loan.getInterestRate())
+            );
             loanAudit.setRepaymentPeriodMonths(
-                    loan.getRepaymentPeriodMonths());
+                    loan.getRepaymentPeriodMonths()
+            );
 
             List<Repayment> repayments =
                     repaymentRepository.findByLoanId(loan.getId());
@@ -588,13 +609,16 @@ public class AuditReportService {
             for (Repayment repayment : repayments) {
 
                 BigDecimal scheduled = decimal(
-                        repayment.getScheduledAmount());
+                        repayment.getScheduledAmount()
+                );
 
                 BigDecimal paid = decimal(
-                        repayment.getPaidAmount());
+                        repayment.getPaidAmount()
+                );
 
                 BigDecimal penalty = decimal(
-                        repayment.getPenaltyAmount());
+                        repayment.getPenaltyAmount()
+                );
 
                 scheduledTotal = scheduledTotal.add(scheduled);
 
@@ -603,7 +627,8 @@ public class AuditReportService {
                 String status = repayment.getPaymentStatus() == null
                         ? ""
                         : repayment.getPaymentStatus()
-                        .trim().toUpperCase();
+                        .trim()
+                        .toUpperCase();
 
                 boolean paidOrPartial = "PAID".equals(status)
                         || "PARTIAL".equals(status)
@@ -622,10 +647,12 @@ public class AuditReportService {
 
                     if (paymentInPeriod) {
                         principalPaid = principalPaid.add(
-                                decimal(repayment.getPrincipalAmount()));
+                                decimal(repayment.getPrincipalAmount())
+                        );
 
                         interestPaid = interestPaid.add(
-                                decimal(repayment.getInterestAmount()));
+                                decimal(repayment.getInterestAmount())
+                        );
                     }
                 }
 
@@ -639,15 +666,20 @@ public class AuditReportService {
                 emi.setScheduledAmount(scheduled);
                 emi.setPaidAmount(paid);
                 emi.setRemainingAmount(
-                        scheduled.subtract(paid).max(BigDecimal.ZERO));
+                        scheduled.subtract(paid).max(BigDecimal.ZERO)
+                );
 
                 emi.setPrincipalAmount(
-                        decimal(repayment.getPrincipalAmount()));
+                        decimal(repayment.getPrincipalAmount())
+                );
                 emi.setInterestAmount(
-                        decimal(repayment.getInterestAmount()));
+                        decimal(repayment.getInterestAmount())
+                );
                 emi.setPenaltyAmount(penalty);
                 emi.setPaymentStatus(repayment.getPaymentStatus());
-                emi.setRegularRepayment(repayment.getRegularRepayment());
+                emi.setRegularRepayment(
+                        repayment.getRegularRepayment()
+                );
                 emi.setRemark(repayment.getRemark());
 
                 loanAudit.getInstallments().add(emi);
@@ -661,6 +693,10 @@ public class AuditReportService {
             );
 
             BigDecimal disbursed = decimal(loan.getLoanAmount());
+
+            // Accumulate the same loan amount used by Group/Woman totals.
+            totalLoanDisbursement =
+                    totalLoanDisbursement.add(disbursed);
 
             BigDecimal outstanding = disbursed
                     .subtract(principalPaid)
@@ -676,51 +712,50 @@ public class AuditReportService {
             womanAudit.getLoans().add(loanAudit);
 
             womanAudit.setTotalLoanAmount(
-                    womanAudit.getTotalLoanAmount().add(disbursed));
+                    womanAudit.getTotalLoanAmount().add(disbursed)
+            );
 
             womanAudit.setTotalPrincipalRecovered(
                     womanAudit.getTotalPrincipalRecovered()
-                            .add(principalPaid));
+                            .add(principalPaid)
+            );
 
             womanAudit.setTotalInterestPaid(
                     womanAudit.getTotalInterestPaid()
-                            .add(interestPaid));
+                            .add(interestPaid)
+            );
 
             womanAudit.setTotalPenaltyPaid(
                     womanAudit.getTotalPenaltyPaid()
-                            .add(penaltyPaid));
+                            .add(penaltyPaid)
+            );
 
             womanAudit.setTotalOutstanding(
-                    womanAudit.getTotalOutstanding().add(outstanding));
+                    womanAudit.getTotalOutstanding().add(outstanding)
+            );
 
             groupAudit.setTotalLoanDisbursement(
-                    groupAudit.getTotalLoanDisbursement().add(disbursed));
+                    groupAudit.getTotalLoanDisbursement().add(disbursed)
+            );
 
             groupAudit.setTotalPrincipalRecovered(
                     groupAudit.getTotalPrincipalRecovered()
-                            .add(principalPaid));
+                            .add(principalPaid)
+            );
 
             groupAudit.setTotalInterestReceived(
                     groupAudit.getTotalInterestReceived()
-                            .add(interestPaid));
+                            .add(interestPaid)
+            );
 
             groupAudit.setTotalPenaltyReceived(
                     groupAudit.getTotalPenaltyReceived()
-                            .add(penaltyPaid));
+                            .add(penaltyPaid)
+            );
 
             groupAudit.setTotalOutstanding(
-                    groupAudit.getTotalOutstanding().add(outstanding));
-
-            // Report period disbursement only for loans disbursed
-            // within the selected report period.
-            LocalDate loanDate = loan.getLoanGivenDate();
-
-            if (loanDate != null
-                    && !loanDate.isBefore(startDate)
-                    && !loanDate.isAfter(endDate)) {
-                periodDisbursement =
-                        periodDisbursement.add(disbursed);
-            }
+                    groupAudit.getTotalOutstanding().add(outstanding)
+            );
 
             periodPrincipal = periodPrincipal.add(principalPaid);
             periodInterest = periodInterest.add(interestPaid);
@@ -728,10 +763,13 @@ public class AuditReportService {
         }
 
         for (AuditReportDto.GroupAudit group : groups.values()) {
+
             group.getWomen().sort(
                     Comparator.comparing(
                             AuditReportDto.WomanAudit::getWomanName,
-                            Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)
+                            Comparator.nullsLast(
+                                    String.CASE_INSENSITIVE_ORDER
+                            )
                     )
             );
 
@@ -739,7 +777,9 @@ public class AuditReportService {
                 woman.getLoans().sort(
                         Comparator.comparing(
                                 AuditReportDto.LoanAudit::getLoanId,
-                                Comparator.nullsLast(Comparator.naturalOrder())
+                                Comparator.nullsLast(
+                                        Comparator.naturalOrder()
+                                )
                         )
                 );
             }
@@ -750,19 +790,31 @@ public class AuditReportService {
         line.getGroups().sort(
                 Comparator.comparing(
                         AuditReportDto.GroupAudit::getGroupName,
-                        Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)
+                        Comparator.nullsLast(
+                                String.CASE_INSENSITIVE_ORDER
+                        )
                 )
         );
 
-        // Ledger amounts remain the financial statement source.
-        // These totals are derived from repayment records for the period.
+        /*
+         * FIX:
+         * The hierarchy Loan Disbursement now uses the same loan records
+         * and loan amount as Group/Woman/Loan Details.
+         *
+         * This is a cumulative total for the loans included in the
+         * hierarchy, not a period-only ledger transaction total.
+         *
+         * Receipts, Payments and Closing Balance remain ledger-based.
+         */
+        line.setLoanDisbursement(totalLoanDisbursement);
+
+        // Keep existing period repayment calculation unchanged.
         line.setPrincipalRecovered(periodPrincipal);
 
         /*
-         * Interest and penalty are shown in the financial statement
-         * from their approved ledger categories. The nested loan detail
-         * separately shows interest and penalty from repayment records.
-         * Do not add both sources together: that would double-count them.
+         * Interest and penalty in the financial statement remain sourced
+         * from approved ledger categories. Nested loan details show
+         * repayment-record values separately to avoid double-counting.
          */
     }
 

@@ -1,4 +1,5 @@
-        package com.example.loan_management.auth.controller;
+
+package com.example.loan_management.auth.controller;
 
 import com.example.loan_management.auth.dto.AuthResponse;
 import com.example.loan_management.auth.dto.LoginRequest;
@@ -8,6 +9,9 @@ import com.example.loan_management.auth.service.AuthService;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -25,15 +29,33 @@ public class AuthController {
     // =========================================================
 
     @PostMapping("/signup")
-    public ResponseEntity<User> signup(
+    public ResponseEntity<Map<String, Object>> signup(
             @RequestBody SignupRequest request) {
 
         User savedUser = authService.signup(request);
 
-        // Never return password
-        savedUser.setPassword(null);
+        Map<String, Object> response = new LinkedHashMap<>();
 
-        return ResponseEntity.ok(savedUser);
+        response.put("id", savedUser.getId());
+        response.put("name", savedUser.getName());
+        response.put("email", savedUser.getEmail());
+        response.put("role", savedUser.getRole());
+        response.put("accountStatus", savedUser.getAccountStatus());
+
+        response.put(
+                "message",
+                "SUPER_ADMIN".equals(savedUser.getRole())
+                        ? "Initial SUPER_ADMIN account created successfully."
+                        : "Registration submitted. Please wait for administrator approval."
+        );
+
+        if (savedUser.getCmrc() != null) {
+            response.put("cmrcId", savedUser.getCmrc().getId());
+            response.put("cmrcName", savedUser.getCmrc().getCmrcName());
+        }
+
+        // Never return password or JWT during signup.
+        return ResponseEntity.ok(response);
     }
 
     // =========================================================
@@ -44,18 +66,15 @@ public class AuthController {
     public ResponseEntity<AuthResponse> login(
             @RequestBody LoginRequest request) {
 
-        // Generate JWT token
         String token = authService.login(
                 request.getEmail(),
                 request.getPassword()
         );
 
-        // Fetch user
         User user = authService.getUserByEmail(
                 request.getEmail()
         );
 
-        // Get CMRC details
         Long cmrcId = null;
         String cmrcName = null;
 
@@ -64,7 +83,6 @@ public class AuthController {
             cmrcName = user.getCmrc().getCmrcName();
         }
 
-        // Build login response
         AuthResponse response = new AuthResponse(
                 user.getId(),
                 user.getName(),
@@ -76,7 +94,8 @@ public class AuthController {
                 user.getAccountNo(),
                 user.getAccountOpeningDate(),
                 token,
-                user.getRole()
+                user.getRole(),
+                user.getAccountStatus()
         );
 
         return ResponseEntity.ok(response);

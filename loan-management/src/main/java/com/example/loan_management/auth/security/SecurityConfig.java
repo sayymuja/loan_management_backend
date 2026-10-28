@@ -1,5 +1,4 @@
-
-package com.example.loan_management.auth.security;
+        package com.example.loan_management.auth.security;
 
 import java.util.Arrays;
 
@@ -37,10 +36,12 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(
                         corsConfigurationSource()))
+
                 .authorizeHttpRequests(auth -> auth
 
-                        // Public signup and login
+                        // Public authentication endpoints
                         .requestMatchers(
+                                HttpMethod.POST,
                                 "/api/auth/signup",
                                 "/api/auth/login"
                         ).permitAll()
@@ -50,27 +51,61 @@ public class SecurityConfig {
                                 HttpMethod.OPTIONS, "/**"
                         ).permitAll()
 
-                        // Public loan image viewing and downloading
+                        // Public loan image access
                         .requestMatchers(
+                                HttpMethod.GET,
                                 "/api/loan-images/view/**",
                                 "/api/loan-images/download/**"
                         ).permitAll()
 
-                        // SUPER_ADMIN-only endpoints
-                        .requestMatchers("/api/super-admin/**")
-                        .hasRole("SUPER_ADMIN")
+                        // SUPER_ADMIN: view all permitted read-only data
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/super-admin/**"
+                        ).hasRole("SUPER_ADMIN")
 
-                        // Existing admin endpoints remain ADMIN-only
-                        .requestMatchers("/api/admin/**")
-                        .hasRole("ADMIN")
+                        // SUPER_ADMIN: explicitly permit role assignment
+                        .requestMatchers(
+                                HttpMethod.PUT,
+                                "/api/super-admin/users/*/role"
+                        ).hasRole("SUPER_ADMIN")
 
-                        // All other endpoints require authentication
+                        // Block all other SUPER_ADMIN endpoint operations
+                        .requestMatchers(
+                                "/api/super-admin/**"
+                        ).denyAll()
+
+                        // ADMIN-only endpoints, including approval APIs
+                        .requestMatchers(
+                                "/api/admin/**"
+                        ).hasRole("ADMIN")
+
+                        // SUPER_ADMIN cannot perform operational writes
+                        .requestMatchers(
+                                HttpMethod.POST, "/api/**"
+                        ).hasAnyRole("ADMIN", "USER")
+
+                        .requestMatchers(
+                                HttpMethod.PUT, "/api/**"
+                        ).hasAnyRole("ADMIN", "USER")
+
+                        .requestMatchers(
+                                HttpMethod.PATCH, "/api/**"
+                        ).hasAnyRole("ADMIN", "USER")
+
+                        .requestMatchers(
+                                HttpMethod.DELETE, "/api/**"
+                        ).hasAnyRole("ADMIN", "USER")
+
+                        // All remaining endpoints require authentication
                         .anyRequest().authenticated()
                 )
+
                 .addFilterBefore(
                         jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter.class
                 )
+
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable());
 

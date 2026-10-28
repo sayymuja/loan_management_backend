@@ -1,17 +1,19 @@
 
 package com.example.loan_management.controller;
 
+import com.example.loan_management.dto.FundTransactionRequest;
 import com.example.loan_management.entity.FundAccount;
 import com.example.loan_management.entity.FundTransaction;
-import com.example.loan_management.dto.FundTransactionRequest;
 import com.example.loan_management.service.FundManagementService;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/fund-management")
@@ -21,42 +23,74 @@ public class FundManagementController {
 
     private final FundManagementService fundManagementService;
 
-    /**
-     * Get an existing fund account or create one for the VO/ALF.
-     */
     @GetMapping("/account/{voAlfId}")
     public ResponseEntity<FundAccount> getAccount(
             @PathVariable Long voAlfId) {
 
         return ResponseEntity.ok(
-                fundManagementService.getOrCreateAccount(voAlfId)
+                fundManagementService.getAccount(voAlfId)
         );
     }
 
-    /**
-     * Submit a Receipt or Payment transaction.
-     * USER requests remain pending until approved.
-     */
     @PostMapping("/transactions")
     public ResponseEntity<FundTransaction> submitTransaction(
             @Valid @RequestBody FundTransactionRequest request) {
 
-        FundTransaction transaction =
-                fundManagementService.submitTransaction(request);
-
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(transaction);
+        return ResponseEntity.ok(
+                fundManagementService.submitTransaction(request)
+        );
     }
 
-    /**
-     * Get transaction history for a VO/ALF.
-     */
     @GetMapping("/transactions/{voAlfId}")
     public ResponseEntity<List<FundTransaction>> getTransactions(
             @PathVariable Long voAlfId) {
 
         return ResponseEntity.ok(
                 fundManagementService.getTransactions(voAlfId)
+        );
+    }
+
+    // Get pending Receipt/Payment approval requests
+    @GetMapping("/approvals/pending")
+    public ResponseEntity<List<Map<String, Object>>>
+    getPendingFundApprovals() {
+
+        return ResponseEntity.ok(
+                fundManagementService.getPendingFundApprovals()
+        );
+    }
+
+    // Approve Receipt/Payment
+    @PostMapping("/approvals/{requestId}/approve")
+    public ResponseEntity<Map<String, Object>> approveFundRequest(
+            @PathVariable Long requestId,
+            @RequestBody(required = false) Map<String, String> body) {
+
+        String remarks = body != null
+                ? body.get("remarks")
+                : "Approved by Admin";
+
+        return ResponseEntity.ok(
+                fundManagementService.approveFundRequest(
+                        requestId, remarks
+                )
+        );
+    }
+
+    // Reject Receipt/Payment
+    @PostMapping("/approvals/{requestId}/reject")
+    public ResponseEntity<Map<String, Object>> rejectFundRequest(
+            @PathVariable Long requestId,
+            @RequestBody(required = false) Map<String, String> body) {
+
+        String remarks = body != null
+                ? body.get("remarks")
+                : "Rejected by Admin";
+
+        return ResponseEntity.ok(
+                fundManagementService.rejectFundRequest(
+                        requestId, remarks
+                )
         );
     }
 }

@@ -1,12 +1,15 @@
-        package com.example.loan_management.auth.dto;
+
+package com.example.loan_management.auth.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 
 @Data
 @AllArgsConstructor
+@NoArgsConstructor
 public class AuthResponse {
 
     private Long id;
@@ -30,4 +33,7 @@ public class AuthResponse {
     private String token;
 
     private String role;
+
+    // ACTIVE, PENDING or REJECTED
+    private String accountStatus;
 }

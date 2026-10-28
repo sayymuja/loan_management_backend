@@ -1,29 +1,56 @@
-        package com.example.loan_management.service;
 
+package com.example.loan_management.service;
+
+import com.example.loan_management.dto.FundTransactionRequest;
 import com.example.loan_management.entity.FundAccount;
 import com.example.loan_management.entity.FundTransaction;
-import com.example.loan_management.dto.FundTransactionRequest;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 public interface FundManagementService {
+
+    // =========================================================
+    // FUND ACCOUNT
+    // =========================================================
 
     FundAccount getOrCreateAccount(Long voAlfId);
 
     FundAccount getAccount(Long voAlfId);
 
-    FundTransaction submitTransaction(FundTransactionRequest request);
+    // =========================================================
+    // FUND RECEIPT / PAYMENT TRANSACTIONS
+    // =========================================================
+
+    FundTransaction submitTransaction(
+            FundTransactionRequest request
+    );
 
     List<FundTransaction> getTransactions(Long voAlfId);
 
-    /**
-     * Record an approved internal transaction, such as an EMI receipt
-     * or a loan disbursement.
-     *
-     * The implementation must prevent duplicate balance updates.
-     */
+    // =========================================================
+    // FUND APPROVAL REQUESTS
+    // =========================================================
+
+    List<Map<String, Object>> getPendingFundApprovals();
+
+    Map<String, Object> approveFundRequest(
+            Long requestId,
+            String remarks
+    );
+
+    Map<String, Object> rejectFundRequest(
+            Long requestId,
+            String remarks
+    );
+
+    // =========================================================
+    // INTERNAL APPROVED TRANSACTIONS
+    // Prevent duplicate balance updates.
+    // =========================================================
+
     FundTransaction recordInternalTransaction(
             Long voAlfId,
             FundTransaction.TransactionType transactionType,
@@ -47,5 +74,7 @@ public interface FundManagementService {
             String paymentEventId
     );
 
-    FundTransaction getTransactionByPaymentEventId(String paymentEventId);
+    FundTransaction getTransactionByPaymentEventId(
+            String paymentEventId
+    );
 }

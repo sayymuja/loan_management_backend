@@ -1,5 +1,6 @@
         package com.example.loan_management.auth.security;
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 
@@ -15,8 +16,18 @@ public class JwtService {
 
     private final SecretKey key;
 
+    private static final long TOKEN_EXPIRATION =
+            1000L * 60 * 60; // 1 hour
+
     public JwtService(
             @Value("${jwt.secret}") String secret) {
+
+        if (secret == null ||
+                secret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalArgumentException(
+                    "JWT secret must be at least 32 bytes long."
+            );
+        }
 
         this.key = Keys.hmacShaKeyFor(
                 secret.getBytes(StandardCharsets.UTF_8)
@@ -25,14 +36,13 @@ public class JwtService {
 
     public String generateToken(String email) {
 
+        Date now = new Date();
+
         return Jwts.builder()
                 .subject(email)
-                .issuedAt(new Date())
+                .issuedAt(now)
                 .expiration(
-                        new Date(
-                                System.currentTimeMillis()
-                                        + 1000L * 60 * 60
-                        )
+                        new Date(now.getTime() + TOKEN_EXPIRATION)
                 )
                 .signWith(key)
                 .compact();
@@ -51,7 +61,8 @@ public class JwtService {
     public boolean isTokenValid(String token) {
 
         try {
-            return extractEmail(token) != null;
+            String email = extractEmail(token);
+            return email != null && !email.isBlank();
         } catch (Exception e) {
             return false;
         }
